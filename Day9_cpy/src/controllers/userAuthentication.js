@@ -66,7 +66,7 @@ const login = async (req , res)=>{
         const token = jwt.sign({ _id: user._id, role: user.role }, process.env.JWT_KEY);
         
         // Use environment variable, but fallback to FALSE for localhost if undefined
-        const isProduction = process.env.NODE_ENV === 'production';
+        const isProduction = true;
 
         res.cookie('token', token, {
             maxAge: 60 * 60 * 1000, // 1 Hour

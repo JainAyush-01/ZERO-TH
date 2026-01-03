@@ -32,7 +32,7 @@ const io = new Server(server, {
 
 const allowedOrigins = [
   "http://localhost:3000", // Local development
-  "https://your-frontend-project.vercel.app" // <--- We will update this later after Vercel deploy
+  "https://zero-th.vercel.app/" // <--- We will update this later after Vercel deploy
 ];
 
 app.use(cors({
@@ -40,7 +40,7 @@ app.use(cors({
 
         // Allow requests with no origin (like mobile apps or curl requests)
         if (!origin) return callback(null, true);
-        
+
         if (allowedOrigins.indexOf(origin) !== -1 || true) { 
             callback(null, true);
         } else {

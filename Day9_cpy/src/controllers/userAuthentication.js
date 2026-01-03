@@ -63,8 +63,19 @@ const login = async (req , res)=>{
         if(!match)
             throw new Error("Invalid Credentials");
 
-        const token = jwt.sign({_id : user._id , emailId : emailId, role : user.role},process.env.JWT_KEY,{expiresIn : 3600});
-        res.cookie('token' , token , {maxAge: 60 * 60 * 1000});
+        const token = jwt.sign({ _id: user._id, role: user.role }, process.env.JWT_KEY);
+        
+        // Use environment variable, but fallback to FALSE for localhost if undefined
+        const isProduction = process.env.NODE_ENV === 'production';
+
+        res.cookie('token', token, {
+            maxAge: 60 * 60 * 1000, // 1 Hour
+            httpOnly: true,         // Security: JS can't read
+            secure: isProduction,   // HTTPS only in prod
+            sameSite: isProduction ? 'none' : 'lax', // Cross-site in prod
+            // NEW: This helps with recent Chrome privacy sandbox changes
+            partitioned: isProduction 
+        });
 
         res.status(200).send("Logged In Successfully");
     }

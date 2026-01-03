@@ -32,8 +32,8 @@ const register = async (req, res) => {
 
         // Generate Token
         const token = jwt.sign({ _id: user._id, role: user.role }, process.env.JWT_KEY);
-        const isProduction = process.env.NODE_ENV === 'production';
-        
+        const isProduction = true
+
         res.cookie('token', token, {
             maxAge: 60 * 60 * 1000,
             httpOnly: true,

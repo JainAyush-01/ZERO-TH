@@ -1,0 +1,162 @@
+const express = require('express');
+const app = express();
+const http = require('http'); // 1. Import HTTP
+const { Server } = require("socket.io"); // 2. Import Socket.io
+const cors = require('cors');
+require('dotenv').config();
+const main = require('./config/db');
+const cookieParser = require('cookie-parser');
+const authRouter = require('./routes/userAuth');
+const redisClient = require('./config/redis');
+const problemRouter = require('./routes/problemCreator');
+const submitRouter = require('./routes/submit');
+const discussionRouter = require('./routes/discussion'); 
+const forumRouter = require('./routes/forum');
+const Discussion = require('./models/discussion');
+const interviewRouter = require('./routes/interview');
+const adminRouter = require('./routes/admin');
+const contestRouter = require('./routes/contest');
+const aiRouter = require('./routes/ai');
+
+// 3. Create Server Instance
+const server = http.createServer(app);
+
+// 4. Initialize Socket.io
+const io = new Server(server, {
+    cors: {
+        origin: "http://localhost:3000",
+        methods: ["GET", "POST"],
+        credentials: true
+    }
+});
+
+const allowedOrigins = [
+  "http://localhost:3000", // Local development
+  "https://your-frontend-project.vercel.app" // <--- We will update this later after Vercel deploy
+];
+
+app.use(cors({
+    origin: (origin, callback) => {
+
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        
+        if (allowedOrigins.indexOf(origin) !== -1 || true) { 
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true // Essential for Cookies
+}));
+
+app.use(express.json());
+app.use(cookieParser());
+
+app.use("/user", authRouter);
+app.use("/problem", problemRouter);
+app.use("/submission", submitRouter);
+app.use("/discussion", discussionRouter); // Mount discussion routes
+app.use("/forum", forumRouter);
+app.use("/interview", interviewRouter);
+app.use("/admin-api", adminRouter);
+app.use("/contest", contestRouter);
+app.use("/ai", aiRouter);
+
+io.on('connection', (socket) => {
+    console.log('User Connected:', socket.id);
+
+    // --- DISCUSSION ROOM LOGIC ---
+    socket.on('join_room', (problemId) => {
+        socket.join(problemId);
+        console.log(`User joined discussion: ${problemId}`);
+    });
+
+    socket.on('send_message', async (data) => {
+        try {
+            const newMsg = await Discussion.create({
+                problemId: data.problemId,
+                userId: data.userId,
+                message: data.message
+            });
+            const fullMsg = await newMsg.populate('userId', 'firstName role');
+            io.to(data.problemId).emit('receive_message', fullMsg);
+        } catch (err) {
+            console.error("Socket Error:", err);
+        }
+    });
+
+    // --- INTERVIEW ROOM LOGIC (SECURE) ---
+    socket.on('join_interview', async ({ roomId, userId }) => {
+        socket.join(roomId);
+        
+        // 1. Verify Host against Redis
+        const ownerId = await redisClient.get(`interview_room:${roomId}`);
+        const isHost = (ownerId === userId);
+        
+        // 2. Tell the user their role
+        socket.emit('role_assigned', { isHost });
+
+        // 3. Notify others
+        socket.to(roomId).emit('user_joined', socket.id);
+        // console.log(`User ${userId} joined interview ${roomId}. Host? ${isHost}`);
+    });
+
+    // Secure Layout Switch (Only Host can trigger)
+    socket.on('layout_change', async (data) => {
+        const ownerId = await redisClient.get(`interview_room:${data.roomId}`);
+        
+        if (ownerId === data.userId) {
+            // Authorized
+            io.to(data.roomId).emit('layout_update', data.mode);
+        } else {
+            console.log(`Unauthorized layout change attempt by ${data.userId}`);
+        }
+    });
+
+    // WebRTC Signaling
+    socket.on('offer', (data) => socket.to(data.roomId).emit('offer', data.payload));
+    socket.on('answer', (data) => socket.to(data.roomId).emit('answer', data.payload));
+    socket.on('ice_candidate', (data) => socket.to(data.roomId).emit('ice_candidate', data.payload));
+    
+    // Live Code Sync
+    socket.on('code_change', (data) => socket.to(data.roomId).emit('code_update', data.code));
+
+    socket.on('disconnecting', () => {
+        const rooms = Array.from(socket.rooms);
+        // Notify all rooms this user was in
+        rooms.forEach(roomId => {
+            socket.to(roomId).emit('user_disconnected', socket.id);
+        });
+        console.log(`User ${socket.id} disconnecting from rooms:`, rooms);
+    });
+
+    socket.on('disconnect', () => {
+        console.log('User Disconnected', socket.id);
+    });
+
+    socket.on('language_change', (data) => {
+        socket.to(data.roomId).emit('language_update', data.language);
+    });
+
+    // 6. Sync Console Output
+    socket.on('output_sync', (data) => {
+        socket.to(data.roomId).emit('output_update', data.output);
+    });
+});
+
+const InitializeConnection = async () => {
+    try {
+        await Promise.all([main(), redisClient.connect()]);
+        console.log("DB Connected");
+
+        // 6. Listen using 'server', not 'app'
+        server.listen(process.env.PORT || 5000, () => {
+            console.log("Listening at port " + (process.env.PORT || 5000));
+        })
+    } catch (err) {
+        console.log(err);
+    }
+}
+
+InitializeConnection();

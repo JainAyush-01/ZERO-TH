@@ -1,0 +1,34 @@
+# --- Dependencies ---
+node_modules/
+*/node_modules/
+
+# --- Environment Variables (CRITICAL SECURITY) ---
+# Ignores .env in Backend and .env.local in Frontend
+.env
+.env.local
+.env.production
+.env.development
+.env.test
+
+# --- Next.js Build Output ---
+.next/
+out/
+build/
+dist/
+
+# --- Logs ---
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- System Files ---
+.DS_Store
+Thumbs.db
+
+# --- Vercel ---
+.vercel
+
+# --- IDE Settings (Optional) ---
+.vscode/
+.idea/

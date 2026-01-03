@@ -24,7 +24,11 @@ const server = http.createServer(app);
 // 4. Initialize Socket.io
 const io = new Server(server, {
     cors: {
-        origin: "http://localhost:3000",
+        // ALLOW BOTH LOCAL AND PRODUCTION
+        origin: [
+            "http://localhost:3000",
+            "https://zero-th.vercel.app" // <--- MUST MATCH EXACTLY (No trailing slash)
+        ],
         methods: ["GET", "POST"],
         credentials: true
     }

@@ -18,8 +18,12 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AlgoNexus | High-Performance Computational Interface",
-  description: "Advanced algorithmic training ground.",
+  // 👇 CHANGE THIS
+  title: "ZEROTH | High-Performance Computational Interface",
+  description: "Advanced algorithmic training ground. Compile. Benchmark. Optimize.",
+  icons: {
+    icon: '/favicon.ico', // Ensure you have a favicon in /public
+  },
 };
 
 export default function RootLayout({

@@ -16,28 +16,22 @@ export const UserMenu = () => {
 
   if (!user) return null;
 
-  const handleLogout = async () => {
+const handleLogout = async () => {
     try {
-      // 1. Show Feedback immediately
-      toast.loading("Disconnecting from Neural Link...", { id: "logout" });
-
-      // 2. Call Backend to clear cookie
+      // 1. Call Backend
       await api.post("/user/logout");
-
-      // 3. NUCLEAR OPTION: Wipe all frontend cache immediately
-      // This forces useAuth() to return null instantly, updating the UI.
+      
+      // 2. Clear Cache
       queryClient.setQueryData(["auth-user"], null); 
-      queryClient.removeQueries({ queryKey: ["auth-user"] });
-
-      // 4. Success & Redirect
-      toast.success("Disconnected successfully", { id: "logout" });
-      router.push("/");
+      
+      // 3. Success & Redirect
+      toast.success("Disconnected");
+      window.location.href = "/"; // Force refresh to clear all state
       
     } catch (err) {
-      console.error("Logout failed", err);
-      // Even if API fails, log them out locally so they aren't stuck
+      // If backend fails, force logout on client anyway
       queryClient.setQueryData(["auth-user"], null);
-      router.push("/");
+      window.location.href = "/";
     }
   };
 

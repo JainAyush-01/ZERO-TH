@@ -85,26 +85,42 @@ const login = async (req , res)=>{
     }
 }
 
-const logout = async (req ,res)=>{
+const logout = async (req, res) => {
+    try {
+        const { token } = req.cookies;
 
-    try
-    {
-        //Validate The token -> Already Implemented using middleware
-        //Add token to redis to block it 
+        // 1. Try to block token in Redis (If Redis is awake)
+        // Wrapped in try/catch so it doesn't stop logout if Redis is sleeping
+        if (token) {
+            try {
+                const payload = jwt.decode(token);
+                if (payload) {
+                    // Block for 1 hour (3600s) or until expiry
+                    const ttl = payload.exp ? (payload.exp - Math.floor(Date.now() / 1000)) : 3600;
+                    if (ttl > 0) await redisClient.set(`token:${token}`, 'Blocked', { EX: ttl });
+                }
+            } catch (redisErr) {
+                console.log("Redis skipping blacklist (Database might be sleeping)");
+            }
+        }
 
-        const {token} = req.cookies;
-        const payload = jwt.decode(token);
+        // 2. Clear the Cookie
+        // IMPORTANT: These flags must match your Login flags to successfully delete it
+        const isProduction = process.env.NODE_ENV === 'production';
 
-        await redisClient.set(`token:${token}`,'Blocked');
-        await redisClient.expireAt(`token:${token}` , payload.exp)
-        //Clear the cookies
+        res.clearCookie("token", {
+            httpOnly: true,
+            secure: isProduction,
+            sameSite: isProduction ? 'none' : 'lax',
+            path: '/'
+        });
 
-        res.cookie("token" , null,{expires : new Date(Date.now())});
-        res.send("Logged Out Successfully")
-    }
-    catch(err)
-    {
-        res.status(503).send("Error : " + err); //503 because whenever error will be throw it will be redis only which means it is not able to connect
+        res.status(200).send("Logged Out Successfully");
+    } catch (err) {
+        console.error("Logout Error:", err);
+        // Force clear anyway
+        res.clearCookie("token");
+        res.status(200).send("Logged Out (Fallback)");
     }
 }
 

@@ -6,18 +6,20 @@ interface Filters {
     search: string;
     difficulty: string;
     category: string;
+    enabled?: boolean; // <--- ADD THIS OPTIONAL PROP
 }
 
 export const useProblems = (filters: Filters) => {
     return useQuery({
-        // The query key includes all filters so it refetches when they change
         queryKey: ['problems', filters.page, filters.search, filters.difficulty, filters.category],
         queryFn: async () => {
             const { data } = await api.get(
                 `/problem/fetchAllProblem?page=${filters.page}&search=${filters.search}&difficulty=${filters.difficulty}&category=${filters.category}`
             );
-            return data; // Returns { problems: [], pagination: {} }
+            return data;
         },
-        placeholderData: (previousData) => previousData, // Keeps old data visible while fetching new
+        placeholderData: (previousData) => previousData,
+        enabled: filters.enabled, // <--- USE IT HERE (If false, query won't run)
+        retry: 1
     });
 };

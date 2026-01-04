@@ -6,6 +6,7 @@ import { LogOut, User as UserIcon, Trophy, ChevronDown, Zap, Shield } from "luci
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
+import { toast } from "sonner"; // Import Toast
 
 export const UserMenu = () => {
   const { data: user } = useAuth();
@@ -17,11 +18,26 @@ export const UserMenu = () => {
 
   const handleLogout = async () => {
     try {
+      // 1. Show Feedback immediately
+      toast.loading("Disconnecting from Neural Link...", { id: "logout" });
+
+      // 2. Call Backend to clear cookie
       await api.post("/user/logout");
-      queryClient.setQueryData(["auth-user"], null);
+
+      // 3. NUCLEAR OPTION: Wipe all frontend cache immediately
+      // This forces useAuth() to return null instantly, updating the UI.
+      queryClient.setQueryData(["auth-user"], null); 
+      queryClient.removeQueries({ queryKey: ["auth-user"] });
+
+      // 4. Success & Redirect
+      toast.success("Disconnected successfully", { id: "logout" });
       router.push("/");
+      
     } catch (err) {
       console.error("Logout failed", err);
+      // Even if API fails, log them out locally so they aren't stuck
+      queryClient.setQueryData(["auth-user"], null);
+      router.push("/");
     }
   };
 
@@ -29,10 +45,10 @@ export const UserMenu = () => {
     <div className="relative z-50" onMouseEnter={() => setIsOpen(true)} onMouseLeave={() => setIsOpen(false)}>
       {/* Trigger Button */}
       <button className="flex items-center gap-3 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all group">
-        <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-accent to-purple-500 flex items-center justify-center text-[10px] font-bold text-white shadow-[0_0_10px_rgba(59,130,246,0.5)]">
+        <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-accent to-purple-500 flex items-center justify-center text-[10px] font-bold text-white shrink-0 shadow-[0_0_10px_rgba(59,130,246,0.5)]">
             {user.firstName ? user.firstName[0].toUpperCase() : "U"}
         </div>
-        <span className="text-xs font-mono text-neutral-300 group-hover:text-white transition-colors">
+        <span className="text-xs font-mono text-neutral-300 group-hover:text-white transition-colors max-w-[100px] truncate">
             {user.firstName}
         </span>
         <ChevronDown size={12} className={`text-neutral-500 transition-transform ${isOpen ? "rotate-180" : ""}`} />
@@ -63,7 +79,6 @@ export const UserMenu = () => {
                     <div className="bg-black/40 p-2 rounded border border-white/5 text-center">
                         <Zap size={14} className="mx-auto text-accent mb-1" />
                         <div className="text-lg font-bold text-white leading-none">
-                             {/* Rank logic placeholder */}
                              {(user.problemSolved?.length || 0) > 10 ? "Pro" : "Novice"}
                         </div>
                         <div className="text-[10px] text-neutral-500">Rank</div>
@@ -73,7 +88,6 @@ export const UserMenu = () => {
 
             {/* Menu Items */}
             <div className="p-1">
-                {/* SHOW FOR ADMIN, CREATOR, OR TESTER */}
                 {['admin', 'creator', 'tester'].includes(user.role) && (
                     <>
                         <button onClick={() => router.push('/admin')} className="w-full flex items-center gap-3 px-3 py-2 text-xs text-accent hover:bg-accent/10 rounded-lg transition-colors text-left font-medium">

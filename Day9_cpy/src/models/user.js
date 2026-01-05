@@ -47,6 +47,10 @@ const userSchema = new Schema({
         type : String,
         required : true
     },
+    masteryStreak: {
+        count: { type: Number, default: 0 },
+        lastActiveDate: { type: Date, default: null }
+    }
 },{
     timestamps : true
 })

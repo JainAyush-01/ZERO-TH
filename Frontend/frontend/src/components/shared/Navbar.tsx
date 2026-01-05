@@ -12,6 +12,7 @@ export const Navbar = () => {
     <nav className="fixed top-0 left-0 right-0 z-50 h-14 border-b border-white/5 bg-[#050505]/80 backdrop-blur-md">
       <div className="max-w-[1400px] mx-auto px-6 h-full flex items-center justify-between">
         
+        {/* LOGO */}
         <Link href="/" className="flex items-center gap-2 group">
           <div className="p-1.5 bg-white/5 rounded-md border border-white/10 group-hover:border-accent/50 transition-colors">
             <Terminal size={16} className="text-accent" />
@@ -21,17 +22,23 @@ export const Navbar = () => {
           </span>
         </Link>
 
+        {/* NAVIGATION */}
         <div className="flex items-center gap-6">
           {isLoading ? (
             <div className="h-8 w-24 bg-white/5 animate-pulse rounded-full" />
           ) : user ? (
             <>
+                {/* DESKTOP MENU */}
                 <div className="hidden md:flex items-center gap-6 text-xs font-mono">
                     <Link href="/problems" className="text-neutral-400 hover:text-white transition-colors">
                         MODULES
                     </Link>
                     <Link href="/contests" className="text-neutral-400 hover:text-white transition-colors">
                         CONTESTS
+                    </Link>
+                    {/* 🚀 ADDED VAULT HERE */}
+                    <Link href="/vault" className="text-neutral-400 hover:text-white transition-colors">
+                        VAULT
                     </Link>
                     <Link href="/leaderboard" className="text-neutral-400 hover:text-white transition-colors">
                         LEADERBOARD
@@ -47,9 +54,11 @@ export const Navbar = () => {
                     </Link>
                 </div>
                 
+                {/* USER DROPDOWN */}
                 <UserMenu />
             </>
           ) : (
+            /* GUEST STATE */
             <>
               <Link href="/login">
                 <Button variant="ghost" className="text-xs h-8 text-neutral-400 hover:text-white">

@@ -17,6 +17,7 @@ const interviewRouter = require('./routes/interview');
 const adminRouter = require('./routes/admin');
 const contestRouter = require('./routes/contest');
 const aiRouter = require('./routes/ai');
+const masteryRouter = require('./routes/mastery');
 
 // 3. Create Server Instance
 const server = http.createServer(app);
@@ -66,6 +67,7 @@ app.use("/interview", interviewRouter);
 app.use("/admin-api", adminRouter);
 app.use("/contest", contestRouter);
 app.use("/ai", aiRouter);
+app.use("/mastery", masteryRouter);
 
 io.on('connection', (socket) => {
     console.log('User Connected:', socket.id);

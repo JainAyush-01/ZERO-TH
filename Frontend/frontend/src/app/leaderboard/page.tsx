@@ -7,9 +7,7 @@ import { cn } from '@/lib/utils';
 
 interface LeaderboardUser {
     firstName: string;
-    emailId: string;
     solvedCount: number;
-    role: string;
 }
 
 export default function LeaderboardPage() {
@@ -32,10 +30,10 @@ export default function LeaderboardPage() {
 
             {/* Table */}
             <div className="bg-[#0A0A0A] border border-white/5 rounded-2xl overflow-hidden">
-                <div className="grid grid-cols-[60px_2fr_1fr_1fr] p-4 text-xs font-mono text-neutral-500 uppercase tracking-wider border-b border-white/5">
+                {/* 🚀 CHANGED GRID: From 4 cols to 3 cols */}
+                <div className="grid grid-cols-[80px_1fr_100px] p-4 text-xs font-mono text-neutral-500 uppercase tracking-wider border-b border-white/5">
                     <div className="text-center">Rank</div>
                     <div>User</div>
-                    <div className="text-center">Role</div>
                     <div className="text-right">Solved</div>
                 </div>
 
@@ -49,7 +47,8 @@ export default function LeaderboardPage() {
                                 initial={{ opacity: 0, x: -20 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 transition={{ delay: i * 0.05 }}
-                                className="grid grid-cols-[60px_2fr_1fr_1fr] p-4 items-center hover:bg-white/[0.02] transition-colors group"
+                                // 🚀 CHANGED GRID here too
+                                className="grid grid-cols-[80px_1fr_100px] p-4 items-center hover:bg-white/[0.02] transition-colors group"
                             >
                                 <div className="text-center flex justify-center">
                                     {i === 0 ? <Trophy size={18} className="text-yellow-500" /> :
@@ -58,20 +57,13 @@ export default function LeaderboardPage() {
                                      <span className="text-neutral-500 font-mono">#{i + 1}</span>
                                     }
                                 </div>
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-4">
                                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-white/10 to-transparent border border-white/10 flex items-center justify-center text-xs font-bold text-white">
                                         {user.firstName[0].toUpperCase()}
                                     </div>
-                                    <div>
-                                        <div className="text-sm font-medium text-white group-hover:text-accent transition-colors">{user.firstName}</div>
-                                        <div className="text-[10px] text-neutral-600 font-mono">{user.emailId}</div>
+                                    <div className="text-sm font-medium text-white group-hover:text-accent transition-colors capitalize">
+                                        {user.firstName}
                                     </div>
-                                </div>
-                                <div className="text-center">
-                                    <span className={cn("text-[10px] px-2 py-0.5 rounded border uppercase", 
-                                        user.role === 'admin' ? "bg-purple-500/10 text-purple-400 border-purple-500/20" : "bg-white/5 text-neutral-500 border-white/5")}>
-                                        {user.role}
-                                    </span>
                                 </div>
                                 <div className="text-right font-mono text-white text-sm">
                                     {user.solvedCount}
@@ -84,4 +76,4 @@ export default function LeaderboardPage() {
         </div>
     </div>
   );
-}   
+}

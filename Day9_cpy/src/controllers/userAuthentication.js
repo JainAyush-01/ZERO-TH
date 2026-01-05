@@ -217,8 +217,6 @@ const fetchLeaderboard = async (req, res) => {
             {
                 $project: {
                     firstName: 1,
-                    emailId: 1,
-                    role: 1,
                     solvedCount: { $size: { "$ifNull": ["$problemSolved", []] } } // Count the array length
                 }
             },

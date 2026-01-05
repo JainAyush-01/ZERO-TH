@@ -1,126 +1,146 @@
 const Submission = require('../models/submission');
+const User = require('../models/user');
+const Mastery = require('../models/mastery');
 const runCode = require('../utils/codeRunner');
 const Problem = require('../models/problem');
-const User = require('../models/user');
 
-const submitAns = async(req , res)=>{
+const submitAns = async (req, res) => {
+    // We declare this outside try so we can access it in catch for error logging
+    let submittedResult = null; 
 
-    try
-    {
+    try {
         const userId = req.result._id;
         const problemId = req.params.id;
+        const { code, language } = req.body;
 
-        const {code , language} = req.body;
-
-        if(!userId || !problemId || !code || !language)
+        if (!userId || !problemId || !code || !language)
             return res.status(400).send("Data is Missing");
 
         const getProblem = await Problem.findById(problemId);
+        if (!getProblem) return res.status(400).send("Problem Does not exists");
 
-        if(!getProblem)
-            return res.status(400).send("Problem Does not exists");
-
-        const submittedResult = await Submission.create({
-
+        // 1. SAVE "PENDING" STATE (Checkpoint 1)
+        // If server dies immediately after this, we have a record that user tried.
+        submittedResult = await Submission.create({
             userId,
             problemId,
             code,
             language,
-            status : 'pending',
-            testCasesTotal : getProblem.hiddenTestCases.length + getProblem.visibleTestCases.length
-        })
+            status: 'pending',
+            testCasesTotal: getProblem.hiddenTestCases.length + getProblem.visibleTestCases.length
+        });
 
+        // 2. Prepare Execution
         const visibleTestCases = getProblem.visibleTestCases;
         const hiddenTestCases = getProblem.hiddenTestCases;
-
         const allTestCases = [...visibleTestCases, ...hiddenTestCases].map(tc => ({
             input: tc.input,
             expected: tc.output
-        }));       
-        
-        const lang = language;
-        const driver = getProblem.driverCode.find(item => item.language === lang);
-        
+        }));
+
+        const driver = getProblem.driverCode.find(item => item.language === language);
         if (!driver) {
-            return res.status(400).json({ 
-                success: false, 
-                message: `Driver missing for language: ${lang}.` 
-            });
+            // Update DB to error state before returning
+            submittedResult.status = 'error';
+            submittedResult.errorMessage = "Driver Missing";
+            await submittedResult.save();
+            return res.status(400).json({ success: false, message: `Driver missing for language: ${language}.` });
         }
 
-        // Execute the code using your bulkJudge utility
-        const validationResults = await runCode(code, driver.Code, lang, allTestCases);
+        // 3. Run Code (The Heavy Operation)
+        const validationResults = await runCode(code, driver.Code, language, allTestCases);
 
-        // 1. Check for Server/Internal Error (Status 13)
+        // Check for Judge Server Failures
         const serverError = validationResults.find(result => result.statusId === 13);
         if (serverError) {
-            return res.status(503).json({
-                success: false,
-                message: "Judge server is busy. Reference solution check failed. Retry later.",
-                type: "SERVER_BUSY"
-            });
+            submittedResult.status = 'error';
+            submittedResult.errorMessage = "Judge Server Busy";
+            await submittedResult.save();
+            return res.status(503).json({ success: false, message: "Judge server busy.", type: "SERVER_BUSY" });
         }
 
+        // 4. Analyze Results
         const passedCount = validationResults.filter(resu => resu.statusId === 3).length;
-        const failedCase = validationResults.filter(resu => resu.statusId != 3); 
+        const failedCase = validationResults.find(resu => resu.statusId != 3);
 
         let totalRuntime = 0;
+        validationResults.forEach(item => { if (item.runtime) totalRuntime += parseFloat(item.runtime); });
 
-        validationResults.forEach(item => {
-            if (item.runtime) {
-                totalRuntime += parseFloat(item.runtime);
-            }
-        });
-
-        let errorMessage = failedCase.length != 0 ? failedCase[0].error : "";
         let status = 'accepted';
-
-        if(failedCase.length != 0)
-        {
-            if(failedCase[0].statusId == 6 || failedCase[0].statusId == 11)
-                status = 'error';
-            else if(failedCase[0].statusId == 5)
-                status = 'TLE'
-            else if(failedCase[0].statusId == 4)
-                status = 'wrong';
+        if (failedCase) {
+            if (failedCase.statusId == 6 || failedCase.statusId == 11) status = 'error';
+            else if (failedCase.statusId == 5) status = 'TLE';
+            else if (failedCase.statusId == 4) status = 'wrong';
         }
 
-        //Store in database
+        // 5. SAVE FINAL RESULT (Checkpoint 2 - CRITICAL)
+        // We save BEFORE updating User/Mastery. 
+        // This ensures the user sees their result even if the profile update crashes.
         submittedResult.status = status;
-        submittedResult.errorMessage = errorMessage;
+        submittedResult.errorMessage = failedCase ? failedCase.error : "";
         submittedResult.testCasesPassed = passedCount;
         submittedResult.runtime = totalRuntime;
         
-        await submittedResult.save();
+        await submittedResult.save(); 
+
+        // 6. Secondary Updates (User & Mastery)
+        // These are "Side Effects". If they fail, the submission is still valid.
+        let inVault = false;
 
         if (status === 'accepted') {
+            try {
+                // A. Update User Profile
+                await User.findByIdAndUpdate(userId, {
+                    $addToSet: { problemSolved: problemId }
+                });
 
-            await User.findByIdAndUpdate(userId, {
-                $addToSet: { problemSolved: problemId }
-            });
+                // B. Update Mastery Vault
+                const masteryEntry = await Mastery.findOne({ userId, problemId });
+                if (masteryEntry) {
+                    inVault = true;
+                } else {
+                    const nextDay = new Date();
+                    nextDay.setDate(nextDay.getDate() + 1);
+                    
+                    await Mastery.create({
+                        userId,
+                        problemId,
+                        repetition: 1, 
+                        interval: 1,   
+                        easeFactor: 2.5,
+                        nextReviewDate: nextDay,
+                        lastReviewedAt: new Date()
+                    });
+                    inVault = true;
+                }
+            } catch (secondaryErr) {
+                // Log this, but DO NOT crash the request. The user's code ran successfully.
+                console.error("Secondary Update Failed:", secondaryErr);
+            }
         }
 
-        await submittedResult.save();
-
-        // 5. Update User Profile ONLY if Accepted
-        if(status === 'accepted') {
-            await User.findByIdAndUpdate(userId, {
-                $addToSet: { problemSolved: problemId }
-            });
-        }
-
-        // --- NEW RETURN LOGIC ---
-        // Send back the submission AND the first failed test case details
-        const responsePayload = {
+        // 7. Send Response
+        res.status(201).json({
             ...submittedResult.toObject(),
-            errorDetails: failedCase.length > 0 ? failedCase[0] : null
-        };
+            errorDetails: failedCase ? failedCase : null,
+            inVault: inVault
+        });
 
-        res.status(201).json(responsePayload);
-    }
-    catch(err)
-    {
-        res.status(500).send("Internal Server Error " + err);
+    } catch (err) {
+        console.error("Critical Submission Error:", err);
+        
+        // 8. FAILSAFE: Update DB to reflect the crash
+        if (submittedResult) {
+            try {
+                submittedResult.status = 'error';
+                submittedResult.errorMessage = "Internal Server Error during processing";
+                await submittedResult.save();
+            } catch (saveErr) {
+                console.error("Could not save fallback error status", saveErr);
+            }
+        }
+
+        res.status(500).send("Internal Server Error: " + err.message);
     }
 }
 

@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Editor, { useMonaco } from "@monaco-editor/react";
 import api from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
@@ -12,11 +12,16 @@ import {
 import { cn } from '@/lib/utils';
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { toast } from 'sonner';
-import AIChatPanel from "@/components/workspace/AIChatPanel"; // Import the AI Panel
+import AIChatPanel from "@/components/workspace/AIChatPanel"; 
+import RatingModal from "@/components/vault/RatingModal"; // <--- NEW IMPORT
 
 export default function Workspace() {
   const { id } = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  // Check if user is here for a Scheduled Review
+  const isReviewMode = searchParams.get('review') === 'true';
   
   // --- STATE ---
   const [code, setCode] = useState<string>("// Loading...");
@@ -32,6 +37,9 @@ export default function Workspace() {
   // AI States
   const [showAI, setShowAI] = useState(false);
   const [lastError, setLastError] = useState<string | undefined>(undefined);
+
+  // Vault/Review State
+  const [showRatingModal, setShowRatingModal] = useState(false);
 
   const monaco = useMonaco();
 
@@ -89,12 +97,11 @@ export default function Workspace() {
 
   const handleRun = async () => {
     setStatus("running");
-    setLastError(undefined); // Clear previous error context
+    setLastError(undefined); 
     try {
       const { data } = await api.post(`/submission/run/${id}`, { code, language });
       setOutput(data);
       
-      // Capture error for AI
       const failed = data.find((r: any) => r.statusId !== 3);
       if (failed) setLastError(failed.error || "Wrong Answer or Runtime Error");
 
@@ -113,8 +120,16 @@ export default function Workspace() {
     try {
       const { data } = await api.post(`/submission/submit/${id}`, { code, language });
       
-      if(data.status === 'accepted') toast.success("Solution Accepted!");
-      else toast.error(`Solution Rejected: ${data.status}`);
+      if(data.status === 'accepted') {
+          toast.success("Solution Accepted!");
+          
+          // 🚀 VAULT LOGIC: If reviewing, open rating modal
+          if (isReviewMode || data.inVault) {
+              setTimeout(() => setShowRatingModal(true), 1000);
+          }
+      } else {
+          toast.error(`Solution Rejected: ${data.status}`);
+      }
 
       if (data.errorDetails) {
           setOutput([data.errorDetails]);
@@ -136,6 +151,18 @@ export default function Workspace() {
       setLastError(err.message);
     } finally {
       setStatus("idle");
+    }
+  };
+
+  // --- VAULT RATING HANDLER ---
+  const handleRate = async (quality: number) => {
+    try {
+        await api.post("/mastery/review", { problemId: id, quality });
+        toast.success("Memory Updated. Review scheduled.");
+        setShowRatingModal(false);
+        router.push("/vault"); // Go back to vault dashboard
+    } catch (e) {
+        toast.error("Failed to update mastery status");
     }
   };
 
@@ -173,8 +200,11 @@ export default function Workspace() {
   );
 
   return (
-    <div className="h-[calc(100vh-3.5rem)] flex flex-col bg-[#050505] overflow-hidden">
-        
+    <div className="h-[calc(100vh-3.5rem)] flex flex-col bg-[#050505] overflow-hidden relative">
+      
+      {/* VAULT MODAL OVERLAY */}
+      {showRatingModal && <RatingModal onRate={handleRate} />}
+
       {/* HEADER */}
       <div className="h-12 border-b border-white/5 bg-[#0A0A0A] flex items-center px-4 justify-between shrink-0">
          <div className="flex items-center gap-4">
@@ -183,8 +213,12 @@ export default function Workspace() {
              </button>
              <div className="h-4 w-[1px] bg-white/10" />
              <h1 className="text-sm font-medium text-white truncate">{problem.title}</h1>
+             {isReviewMode && (
+                 <span className="px-2 py-0.5 bg-purple-500/10 border border-purple-500/20 text-purple-400 text-[10px] uppercase font-bold rounded">
+                    Review Mode
+                 </span>
+             )}
          </div>
-         {/* Shortcuts Hint */}
          <div className="hidden md:flex items-center gap-4 text-[10px] text-neutral-600 font-mono">
              <span>Run: Ctrl + Enter</span>
              <span>AI Assistant: {showAI ? 'Active' : 'Offline'}</span>
@@ -194,7 +228,7 @@ export default function Workspace() {
       {/* MAIN WORKSPACE */}
       <PanelGroup direction="horizontal" className="flex-1">
         
-        {/* LEFT PANEL: Description / Submissions */}
+        {/* LEFT PANEL */}
         <Panel defaultSize={40} minSize={30} className="flex flex-col border-r border-white/5 bg-[#050505]">
           <div className="flex items-center h-10 border-b border-white/5 px-2">
             {[ { id: 'description', icon: List, label: 'Description' }, { id: 'submissions', icon: History, label: 'Submissions' } ].map(tab => (
@@ -267,7 +301,6 @@ export default function Workspace() {
                     
                     {/* EDITOR */}
                     <Panel defaultSize={70} minSize={20} className="flex flex-col bg-[#09090b]">
-                        {/* Toolbar */}
                         <div className="h-10 border-b border-white/5 flex items-center justify-between px-4 bg-[#0A0A0A] shrink-0">
                             <div className="flex items-center gap-3">
                                 <Code2 size={14} className="text-neutral-500" />
@@ -280,19 +313,12 @@ export default function Workspace() {
                             </div>
                             
                             <div className="flex items-center gap-2">
-                                {/* AI TOGGLE BUTTON */}
                                 <button 
                                     onClick={() => setShowAI(!showAI)} 
-                                    className={cn(
-                                        "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all border",
-                                        showAI 
-                                            ? "bg-purple-500/10 text-purple-400 border-purple-500/20" 
-                                            : "bg-white/5 text-neutral-400 border-white/5 hover:text-white"
-                                    )}
+                                    className={cn("flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all border", showAI ? "bg-purple-500/10 text-purple-400 border-purple-500/20" : "bg-white/5 text-neutral-400 border-white/5 hover:text-white")}
                                 >
                                     <Sparkles size={12} /> AI
                                 </button>
-
                                 <button onClick={handleRun} disabled={status !== "idle"} className="flex items-center gap-2 px-4 py-1.5 rounded-md bg-white/5 hover:bg-white/10 text-neutral-200 text-xs font-medium transition-all border border-white/5"><Play size={12} className={status === "running" ? "animate-spin" : ""} /> Run</button>
                                 <button onClick={handleSubmit} disabled={status !== "idle"} className="flex items-center gap-2 px-4 py-1.5 rounded-md bg-accent hover:bg-accent/90 text-white text-xs font-medium transition-all shadow-lg shadow-accent/20">{status === "submitting" ? <Clock size={12} className="animate-spin" /> : <Send size={12} />} Submit</button>
                             </div>

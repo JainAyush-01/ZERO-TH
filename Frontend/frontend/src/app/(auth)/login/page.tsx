@@ -38,7 +38,9 @@ export default function LoginPage() {
         toast.success("Access Granted.");
         router.push("/problems"); 
     } catch (err: any) {
-        toast.error(err.response?.data || "Invalid Credentials");
+        // FIX: Safely extract error message string
+        const msg = err.response?.data?.message || err.response?.data || "Invalid Credentials";
+        toast.error(typeof msg === 'string' ? msg : "System Error");
     }
   };
 
@@ -57,7 +59,9 @@ export default function LoginPage() {
           router.push("/problems");
       } catch (err: any) {
           console.error(err);
-          toast.error("Google Login Failed");
+          // FIX: Safely extract error message
+          const msg = err.response?.data?.message || "Google Login Failed";
+          toast.error(typeof msg === 'string' ? msg : "System Error");
       }
   };
 

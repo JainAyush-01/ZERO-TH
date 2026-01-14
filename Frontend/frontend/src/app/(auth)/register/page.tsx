@@ -44,7 +44,9 @@ export default function RegisterPage() {
         setOtpSent(true);
         toast.success(`OTP sent to ${email}`);
     } catch (err: any) {
-        toast.error(err.response?.data || "Failed to send OTP");
+        // FIX: Safely extract error message string
+        const msg = err.response?.data?.message || err.response?.data || "Failed to send OTP";
+        toast.error(typeof msg === 'string' ? msg : "System Error");
     } finally {
         setOtpLoading(false);
     }
@@ -58,8 +60,9 @@ export default function RegisterPage() {
         toast.success("Account initialized successfully.");
         router.push("/login");
     } catch (err: any) {
-        const errorMsg = err.response?.data?.message || "Registration failed";
-        toast.error(errorMsg);
+        // FIX: Safely extract error message string
+        const msg = err.response?.data?.message || err.response?.data || "Registration failed";
+        toast.error(typeof msg === 'string' ? msg : "System Error");
     }
   };
 

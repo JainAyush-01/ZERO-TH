@@ -285,6 +285,8 @@ const googleAuth = async (req, res) => {
     }
 };
 
+// ... existing code ...
+
 const sendOtp = async (req, res) => {
     try {
         const { emailId } = req.body;
@@ -298,22 +300,15 @@ const sendOtp = async (req, res) => {
         // 1. Save to Redis
         await redisClient.set(`otp:${emailId}`, otp, { EX: 300 });
 
-        // 2. Try Sending Email
+        // 2. Send via Resend (HTTP API)
         try {
             await sendOTPEmail(emailId, otp);
-            res.status(200).send("OTP sent to email");
+            res.status(200).json({ message: "OTP sent successfully" });
         } catch (emailError) {
-            // 🛑 FAILSAFE: If Email fails (Render block), Log it and allow user to proceed
-            console.error("⚠️ SMTP Failed (Render Firewall). Using Fallback.");
-            console.log("=======================================");
-            console.log(`🔐 MANUAL OTP FOR ${emailId}: ${otp}`);
-            console.log("=======================================");
-            
-            // Send success anyway so Frontend shows the OTP Input
-            res.status(200).json({ 
-                message: "Email service busy. Check Server Logs for OTP (Dev Mode).",
-                devOtp: otp // Optional: Send back to frontend for easier testing if you want
-            });
+            console.error("Email API Error:", emailError);
+            // Fallback for interview/demo if API limits hit
+            console.log(`🔐 FALLBACK OTP: ${otp}`);
+            res.status(200).json({ message: "Dev Mode: Check Server Logs for OTP" });
         }
 
     } catch (err) {

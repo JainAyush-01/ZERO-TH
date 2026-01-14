@@ -39,7 +39,8 @@ const register = async (req, res) => {
             httpOnly: true,
             // PRODUCTION SETTINGS
             secure: isProduction, // TRUE in production (HTTPS), FALSE in dev (HTTP)
-            sameSite: isProduction ? 'none' : 'lax' // 'none' allows cross-site (Vercel -> Render)
+            sameSite: isProduction ? 'none' : 'lax', // 'none' allows cross-site (Vercel -> Render)
+            path:'/'
         });
 
         res.status(201).send("User Registered");

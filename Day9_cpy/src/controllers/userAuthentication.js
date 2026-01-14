@@ -35,12 +35,14 @@ const register = async (req, res) => {
         const isProduction = true
 
         res.cookie('token', token, {
-            maxAge: 60 * 60 * 1000,
-            httpOnly: true,
-            // PRODUCTION SETTINGS
-            secure: isProduction, // TRUE in production (HTTPS), FALSE in dev (HTTP)
-            sameSite: isProduction ? 'none' : 'lax', // 'none' allows cross-site (Vercel -> Render)
-            path:'/'
+            maxAge: 60 * 60 * 1000, // 1 Hour
+            httpOnly: true,         // Security: JS can't read it
+            path: '/',              // Available on all pages
+            
+            // 🚀 FORCE THESE SETTINGS FOR PROXY:
+            secure: true,           // Always True (Vercel is HTTPS)
+            sameSite: 'lax',        // 'Lax' works perfectly with Proxies (Same Origin)
+            // domain: ...          // DO NOT SET DOMAIN (Let browser infer it)
         });
 
         res.status(201).send("User Registered");

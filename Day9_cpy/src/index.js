@@ -153,15 +153,17 @@ io.on('connection', (socket) => {
 
 const InitializeConnection = async () => {
     try {
+        // MAKE SURE REDIS IS INCLUDED HERE 👇
         await Promise.all([main(), redisClient.connect()]);
-        console.log("DB Connected");
+        
+        console.log("✅ DB & Redis Connected");
 
-        // 6. Listen using 'server', not 'app'
-        server.listen(process.env.PORT || 5000, () => {
-            console.log("Listening at port " + (process.env.PORT || 5000));
-        })
+        const PORT = process.env.PORT || 5000;
+        server.listen(PORT, "0.0.0.0", () => {
+             console.log(`Server running on Port ${PORT}`);
+        });
     } catch (err) {
-        console.log(err);
+        console.error("❌ Startup Error:", err);
     }
 }
 

@@ -1,11 +1,10 @@
 import axios from 'axios';
 
-// Automatically choose URL based on environment
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-
+// 🚀 CHANGED: Use relative path. 
+// This tells the browser "Connect to the same domain I am currently on"
 const api = axios.create({
-  baseURL: API_URL,
-  withCredentials: true, // Critical for Cookies
+  baseURL: '/api', 
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },

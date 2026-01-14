@@ -8,7 +8,8 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import api from "@/lib/api";
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+// Keep this pointing to Render for WebSockets
+const SOCKET_URL = "https://zero-th.onrender.com";
 const ICE_SERVERS = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },

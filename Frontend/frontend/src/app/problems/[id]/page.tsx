@@ -77,11 +77,18 @@ export default function Workspace() {
     if(id) fetchProblem();
   }, [id]);
 
-  const { data: submissions, refetch: refetchSubmissions } = useQuery({
+  const { data: submissionData, refetch: refetchSubmissions } = useQuery({
     queryKey: ['submissions', id],
-    queryFn: async () => (await api.get(`/problem/fetchSubmittedProblem?pid=${id}`)).data,
+    queryFn: async () => {
+        const { data } = await api.get(`/problem/fetchSubmittedProblem?pid=${id}`);
+        return data; 
+    },
     enabled: activeTab === 'submissions'
   });
+
+  const submissions = Array.isArray(submissionData) 
+    ? submissionData 
+    : (submissionData?.submissions || []);
 
   const handleLanguageChange = (newLang: string) => {
     setLanguage(newLang);

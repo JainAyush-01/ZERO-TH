@@ -355,20 +355,18 @@ const fetchSolvedProblem = async(req ,res)=>{
 }
 
 const fetchSubmittedSolutions = async(req,res)=>{
-
-    try
-    {
+    try {
         const userId = req.result._id;
-        const problemId = req.query.pid; 
+        const problemId = req.query.pid;
 
-        const Solutions = await Submission.find({userId,problemId});
+        if(!problemId) return res.status(400).send("Missing Problem ID");
 
-        if(Solutions.length == 0)
-            res.status(200).send("No Sumissions");
-        res.status(200).send(Solutions);
-    }
-    catch(err)
-    {
+        const solutions = await Submission.find({userId, problemId})
+            .sort({ createdAt: -1 });
+
+        // Standardize: Send as an object so the frontend knows what it is receiving
+        res.status(200).json({ submissions: solutions });
+    } catch(err) {
         res.status(500).send("Error : " + err);
     }
 }

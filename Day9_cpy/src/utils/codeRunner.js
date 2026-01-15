@@ -1,6 +1,6 @@
 const { performance } = require('perf_hooks');
 
-async function bulkJudge(userCode, driverCode, language, testCases) {
+async function bulkJudge(userCode, driverCode, language, testCases, options = { stopOnError: true }) {
     const langConfig = {
         cpp: { version: "10.2.0", fileName: "main.cpp" },
         java: { version: "15.0.2", fileName: "Main.java" },
@@ -25,63 +25,66 @@ async function bulkJudge(userCode, driverCode, language, testCases) {
         fullCode = `${getDefaultHeaders(language)}\n\n${userCode}\n\n${driverCode}`;
     }
 
-    // 1. Map every test case to a Promise (API Call)
-    // This starts ALL requests immediately without waiting for the previous one.
-    const promises = testCases.map(async (tc, index) => {
-        const startTime = performance.now();
-        
+    // --- RETRY HELPER ---
+    const fetchWithRetry = async (url, options, retries = 3) => {
         try {
-            const response = await fetch("https://emkc.org/api/v2/piston/execute", {
+            const response = await fetch(url, options);
+            if (response.status === 429) {
+                throw new Error("RATE_LIMIT");
+            }
+            if (!response.ok) {
+                throw new Error("SERVER_ERROR");
+            }
+            return response;
+        } catch (err) {
+            if (retries > 0) {
+                // Wait 1 second before retrying
+                await new Promise(res => setTimeout(res, 1000));
+                return fetchWithRetry(url, options, retries - 1);
+            }
+            throw err;
+        }
+    };
+
+    // --- EXECUTION HELPER ---
+    const executeSingleCase = async (tc, index) => {
+        const startTime = performance.now();
+        try {
+            const response = await fetchWithRetry("https://emkc.org/api/v2/piston/execute", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     language: language,
                     version: langConfig[language].version,
                     files: [{ name: langConfig[language].fileName, content: fullCode }],
-                    stdin: tc.input // Send specific input for this case
+                    stdin: tc.input
                 }),
-                // 8 second timeout per request
-                signal: AbortSignal.timeout(8000) 
+                signal: AbortSignal.timeout(10000) 
             });
-
-            if (!response.ok) {
-                // Handle Rate Limiting (429) specifically
-                if (response.status === 429) throw new Error("RATE_LIMIT");
-                throw new Error("SERVER_BUSY");
-            }
 
             const data = await response.json();
             const endTime = performance.now();
             const run = data.run;
             
-            // Calculate Status
             let statusId = 3; 
             let statusDesc = "Accepted";
             let errorMsg = "";
 
-            // Check Compilation Error
             if (data.compile && data.compile.stderr) {
                 statusId = 6; statusDesc = "Compilation Error";
                 errorMsg = data.compile.stderr;
-            } 
-            // Check Runtime Error
-            else if (run.stderr) {
+            } else if (run.stderr) {
                 statusId = 11; statusDesc = "Runtime Error";
                 errorMsg = run.stderr;
-            } 
-            // Check Timeout (SIGKILL)
-            else if (run.signal === "SIGKILL") {
+            } else if (run.signal === "SIGKILL") {
                 statusId = 5; statusDesc = "Time Limit Exceeded";
-            } 
-            // Check Wrong Answer
-            else if (run.stdout.trim() !== tc.expected.trim()) {
+            } else if (run.stdout.trim() !== tc.expected.trim()) {
                 statusId = 4; statusDesc = "Wrong Answer";
             }
 
-            // Return Result Object
             return {
                 testCase: index + 1,
-                input: tc.input, // Pass input back for UI
+                input: tc.input,
                 statusId,
                 status: statusDesc,
                 actual: run.stdout ? run.stdout.trim() : "",
@@ -90,24 +93,33 @@ async function bulkJudge(userCode, driverCode, language, testCases) {
                 runtime: Math.floor(endTime - startTime),
                 memory: "N/A"
             };
-
         } catch (error) {
-            // Handle Errors (Rate Limit or Network Fail)
             return {
                 testCase: index + 1,
                 input: tc.input,
-                statusId: error.message === "RATE_LIMIT" ? 13 : 13,
+                statusId: 13,
                 status: "Internal Error",
-                error: error.message === "RATE_LIMIT" ? "Judge Rate Limit (Too many requests)" : "Judge Server Busy",
+                error: error.message === "RATE_LIMIT" ? "Judge Rate Limit" : "Judge Server Busy",
                 runtime: 0,
                 memory: "N/A"
             };
         }
-    });
+    };
 
-    // 2. Wait for ALL promises to resolve
-    // This finishes when the SLOWEST test case finishes.
-    const results = await Promise.all(promises);
+    // --- SERIAL BATCHING (Safest for Public API) ---
+    // We run 1 at a time to prevent 429 Errors. 
+    // Since you have few test cases, this is fast enough.
+    const results = [];
+    
+    for (let i = 0; i < testCases.length; i++) {
+        const result = await executeSingleCase(testCases[i], i);
+        results.push(result);
+        
+        // Stop early if needed
+        if (options.stopOnError && result.statusId !== 3) {
+            break;
+        }
+    }
     
     return results;
 }

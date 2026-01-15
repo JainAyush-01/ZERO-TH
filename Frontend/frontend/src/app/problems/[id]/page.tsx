@@ -130,15 +130,27 @@ export default function Workspace() {
     }
   };
 
+  const handleRate = async (quality: number) => {
+      // 1. Close Modal Instantly (Optimistic UI)
+      setShowRatingModal(false);
+      
+      try {
+          // 2. Call API
+          await api.post("/mastery/review", { problemId: id, quality });
+          toast.success("Memory Updated.");
+          
+          // 3. Redirect to Vault
+          router.push("/vault");
+      } catch (e) {
+          toast.error("Failed to update mastery status");
+      }
+  };
+
   if (!problem) return <div className="h-screen bg-[#050505] flex items-center justify-center font-mono text-xs tracking-widest animate-pulse text-neutral-600">LOADING_KERNEL_ASSETS...</div>;
 
   return (
     <div className="h-[calc(100vh-3.5rem)] flex flex-col bg-[#050505] overflow-hidden">
-      {showRatingModal && <RatingModal onRate={async (q) => {
-          await api.post("/mastery/review", { problemId: id, quality: q });
-          setShowRatingModal(false);
-          router.push("/vault");
-      }} />}
+      {showRatingModal && <RatingModal onRate={handleRate} />}
       
       <SubmissionModal isOpen={showSubmissionModal} onClose={() => setShowSubmissionModal(false)} submission={selectedSubmission} />
 

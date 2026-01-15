@@ -71,7 +71,10 @@ app.use("/mastery", masteryRouter);
 
 io.on('connection', (socket) => {
     console.log('User Connected:', socket.id);
-
+    
+    socket.on('stdin_change', (data) => {
+        socket.to(data.roomId).emit('stdin_update', data.stdin);
+    });
     // --- DISCUSSION ROOM LOGIC ---
     socket.on('join_room', (problemId) => {
         socket.join(problemId);

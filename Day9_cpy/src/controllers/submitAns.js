@@ -222,26 +222,38 @@ const fetchUserHistory = async (req, res) => {
 }
 
 // 2. Playground Runner (Raw Piston Execution)
+// 2. Playground/Interview Runner (Raw Piston Execution)
 const runPlayground = async (req, res) => {
     try {
-        const { code, language, stdin } = req.body; // <--- Ensure stdin is caught here
+        const { code, language, stdin } = req.body; // <--- Capture stdin
         
-        // Piston API requires 'stdin' as a string in the body
+        const langConfig = {
+            cpp: { version: "10.2.0", fileName: "main.cpp" },
+            java: { version: "15.0.2", fileName: "Main.java" },
+            python: { version: "3.10.0", fileName: "main.py" },
+            javascript: { version: "18.15.0", fileName: "main.js" }
+        };
+
+        const config = langConfig[language];
+        if(!config) return res.status(400).send("Unsupported Language");
+
         const response = await fetch("https://emkc.org/api/v2/piston/execute", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 language: language,
-                version: config.version, // Ensure your version map is correct
-                files: [{ name: "main", content: code }],
-                stdin: stdin || "" // <--- PASS THE INPUT
+                version: config.version,
+                files: [{ name: config.fileName, content: code }],
+                stdin: stdin || "" // <--- PASS INPUT TO PISTON
             })
         });
 
         const data = await response.json();
+        
+        // Return stdout or stderr
         res.status(200).send(data.run);
     } catch (err) {
-        res.status(500).send(err.message);
+        res.status(500).send("Playground Error: " + err.message);
     }
 }
 // ADMIN: Fetch all submissions (Global History)

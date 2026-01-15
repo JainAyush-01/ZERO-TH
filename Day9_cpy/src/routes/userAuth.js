@@ -8,7 +8,7 @@ const {
     adminRegister, 
     deleteProfile, 
     fetchDetails,
-    googleAuth, sendOtp
+    googleAuth, sendOtp, forgotPassword, resetPassword  
 } = require('../controllers/userAuthentication');
 const { fetchLeaderboard } = require('../controllers/userAuthentication');
 
@@ -21,5 +21,7 @@ authRouter.delete('/profile/Delete', validateToken, deleteProfile);
 authRouter.get('/leaderboard', fetchLeaderboard); 
 authRouter.post('/google', googleAuth);
 authRouter.post('/send-otp', sendOtp);
+authRouter.post('/forgot-password', forgotPassword);
+authRouter.post('/reset-password', resetPassword);
 
 module.exports = authRouter;

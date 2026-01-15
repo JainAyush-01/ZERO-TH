@@ -94,6 +94,16 @@ io.on('connection', (socket) => {
 
     // --- INTERVIEW ROOM LOGIC (SECURE) ---
     socket.on('join_interview', async ({ roomId, userId }) => {
+        const room = io.sockets.adapter.rooms.get(roomId);
+        const size = room ? room.size : 0;
+        
+        if (size >= 2) {
+             // Only block if this specific user isn't already in the room (reconnect)
+             // For simplicity in MVP: Block 3rd connection
+             socket.emit('room_full');
+             return;
+        }
+
         socket.join(roomId);
         
         // 1. Verify Host against Redis
@@ -124,6 +134,10 @@ io.on('connection', (socket) => {
     socket.on('offer', (data) => socket.to(data.roomId).emit('offer', data.payload));
     socket.on('answer', (data) => socket.to(data.roomId).emit('answer', data.payload));
     socket.on('ice_candidate', (data) => socket.to(data.roomId).emit('ice_candidate', data.payload));
+
+    socket.on('stdin_change', (data) => {
+        socket.to(data.roomId).emit('stdin_update', data.stdin);
+    });
     
     // Live Code Sync
     socket.on('code_change', (data) => socket.to(data.roomId).emit('code_update', data.code));

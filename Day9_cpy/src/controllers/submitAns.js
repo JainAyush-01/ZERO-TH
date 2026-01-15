@@ -144,84 +144,60 @@ const submitAns = async (req, res) => {
     }
 }
 
-const RunCode = async (req , res)=>{
-
-    try
-    {
+const RunCode = async (req, res) => {
+    try {
         const userId = req.result._id;
         const problemId = req.params.id;
+        const { code, language, input } = req.body;
 
-        const {code , language} = req.body;
-
-        if(!userId || !problemId || !code || !language)
+        if (!userId || !problemId || !code || !language)
             return res.status(400).send("Data is Missing");
 
         const getProblem = await Problem.findById(problemId);
+        if (!getProblem) return res.status(400).send("Problem Does not exists");
 
-        if(!getProblem)
-            return res.status(400).send("Problem Does not exists");
-
-        const visibleTestCases = getProblem.visibleTestCases;
-
-        const allTestCases = [...visibleTestCases].map(tc => ({
-            input: tc.input,
-            expected: tc.output
-        }));       
+        let allTestCases = [];
         
-        const lang = language;
-        const driver = getProblem.driverCode.find(item => item.language === lang);
+        if (input) {
+            // CUSTOM INPUT MODE
+            // We strip newlines to ensure clean input parsing
+            allTestCases = [{ input: input.trim(), expected: "Custom Run" }]; 
+        } else {
+            // DEFAULT TEST CASES
+            allTestCases = getProblem.visibleTestCases.map(tc => ({
+                input: tc.input,
+                expected: tc.output
+            }));
+        }
         
+        const driver = getProblem.driverCode.find(item => item.language === language);
         if (!driver) {
-            return res.status(400).json({ 
-                success: false, 
-                message: `Driver missing for language: ${lang}.` 
-            });
+            return res.status(400).json({ success: false, message: `Driver missing for language: ${language}.` });
         }
 
-        // Execute the code using your bulkJudge utility
-        const validationResults = await runCode(code, driver.Code, lang, allTestCases , { stopOnError: false });
+        // Run Code
+        // Note: For Custom Input, we don't care about "Wrong Answer" status, we just want the output.
+        // So we pass a flag or handle the result differently.
+        const validationResults = await runCode(code, driver.Code, language, allTestCases);
 
-        // 1. Check for Server/Internal Error (Status 13)
-        const serverError = validationResults.find(result => result.statusId === 13);
-        if (serverError) {
-            return res.status(503).json({
-                success: false,
-                message: "Judge server is busy. Reference solution check failed. Retry later.",
-                type: "SERVER_BUSY"
-            });
+        // If custom input, we force status to 'Accepted' if it ran, so the UI shows the output
+        if (input && validationResults.length > 0) {
+            validationResults[0].status = "Ran Successfully";
+            // We clear the error if it was just a mismatch with "Custom Run" expected string
+            if (validationResults[0].statusId === 4) {
+                validationResults[0].statusId = 3; 
+                validationResults[0].error = null;
+            }
         }
-
-        // const passedCount = validationResults.filter(resu => resu.statusId === 3).length;
-        // const failedCase = validationResults.filter(resu => resu.statusId != 3); 
-
-        // let totalRuntime = 0;
-
-        // validationResults.forEach(item => {
-        //     if (item.runtime) {
-        //         totalRuntime += parseFloat(item.runtime);
-        //     }
-        // });
-
-        // let errorMessage = failedCase.length != 0 ? failedCase[0].error : "";
-        // let status = 'accepted';
-
-        // if(failedCase.length != 0)
-        // {
-        //     if(failedCase[0].statusId == 6 || failedCase[0].statusId == 11)
-        //         status = 'error';
-        //     else if(failedCase[0].statusId == 5)
-        //         status = 'TLE'
-        //     else if(failedCase[0].statusId == 4)
-        //         status = 'wrong';
-        // }
 
         res.status(201).send(validationResults);
     }
-    catch(err)
-    {
+    catch(err) {
         res.status(500).send("Internal Server Error " + err);
     }
 }
+
+
 
 const fetchUserHistory = async (req, res) => {
     try {
@@ -248,33 +224,24 @@ const fetchUserHistory = async (req, res) => {
 // 2. Playground Runner (Raw Piston Execution)
 const runPlayground = async (req, res) => {
     try {
-        const { code, language } = req.body;
+        const { code, language, stdin } = req.body; // <--- Ensure stdin is caught here
         
-        // Basic mapping for Piston
-        const langConfig = {
-            cpp: { version: "10.2.0", fileName: "main.cpp" },
-            java: { version: "15.0.2", fileName: "Main.java" },
-            python: { version: "3.10.0", fileName: "main.py" },
-            javascript: { version: "18.15.0", fileName: "main.js" }
-        };
-
-        const config = langConfig[language];
-        if(!config) return res.status(400).send("Unsupported Language");
-
+        // Piston API requires 'stdin' as a string in the body
         const response = await fetch("https://emkc.org/api/v2/piston/execute", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 language: language,
-                version: config.version,
-                files: [{ name: config.fileName, content: code }]
+                version: config.version, // Ensure your version map is correct
+                files: [{ name: "main", content: code }],
+                stdin: stdin || "" // <--- PASS THE INPUT
             })
         });
 
         const data = await response.json();
         res.status(200).send(data.run);
     } catch (err) {
-        res.status(500).send("Playground Error: " + err.message);
+        res.status(500).send(err.message);
     }
 }
 // ADMIN: Fetch all submissions (Global History)
@@ -308,10 +275,32 @@ const getAllSubmissions = async (req, res) => {
 }
 
 // Add to exports
+// ... existing imports
+
+const getSubmissionById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const submission = await Submission.findById(id).populate('problemId', 'title');
+        
+        if (!submission) return res.status(404).send("Submission not found");
+        
+        // Security check: Ensure user owns this submission (or is admin)
+        if (submission.userId.toString() !== req.result._id.toString() && req.result.role !== 'admin') {
+            return res.status(403).send("Unauthorized");
+        }
+
+        res.status(200).json(submission);
+    } catch (err) {
+        res.status(500).send("Error fetching submission");
+    }
+}
+
+// Don't forget to export it!
 module.exports = { 
     submitAns, 
     RunCode, 
     fetchUserHistory, 
     runPlayground, 
-    getAllSubmissions // <--- Export this
+    getAllSubmissions, 
+    getSubmissionById // <--- Added
 };

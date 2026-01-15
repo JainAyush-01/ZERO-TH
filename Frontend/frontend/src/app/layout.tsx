@@ -18,11 +18,15 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  // 👇 CHANGE THIS
   title: "ZEROTH | High-Performance Computational Interface",
   description: "Advanced algorithmic training ground. Compile. Benchmark. Optimize.",
   icons: {
-    icon: '/favicon.ico', // Ensure you have a favicon in /public
+    icon: [
+      {
+        url: "/icon.png", // This points to the file you just dropped in src/app
+        href: "/icon.png",
+      },
+    ],
   },
 };
 

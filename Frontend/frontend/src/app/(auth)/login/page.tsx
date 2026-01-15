@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -10,6 +11,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { GoogleLogin } from '@react-oauth/google'; 
+import { Eye, EyeOff, Lock } from "lucide-react";
 
 // Validation Schema
 const loginSchema = z.object({
@@ -22,6 +24,7 @@ type LoginForm = z.infer<typeof loginSchema>;
 export default function LoginPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const [showPassword, setShowPassword] = useState(false);
   
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -31,14 +34,13 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginForm) => {
     try {
         await api.post("/user/login", data);
-        
-        // Refresh Auth State
         await queryClient.invalidateQueries({ queryKey: ["auth-user"] });
         
         toast.success("Access Granted.");
         router.push("/problems"); 
+        // window.location.href = "/problems";
+
     } catch (err: any) {
-        // FIX: Safely extract error message string
         const msg = err.response?.data?.message || err.response?.data || "Invalid Credentials";
         toast.error(typeof msg === 'string' ? msg : "System Error");
     }
@@ -47,19 +49,14 @@ export default function LoginPage() {
   // 2. Handle Google Login Success
   const handleGoogleSuccess = async (credentialResponse: any) => {
       try {
-          // Send the Google ID Token to your Backend
           await api.post('/user/google', { 
               idToken: credentialResponse.credential 
           });
-
-          // Refresh Auth State
           await queryClient.invalidateQueries({ queryKey: ["auth-user"] });
           
           toast.success("Identity Verified via Google");
           router.push("/problems");
       } catch (err: any) {
-          console.error(err);
-          // FIX: Safely extract error message
           const msg = err.response?.data?.message || "Google Login Failed";
           toast.error(typeof msg === 'string' ? msg : "System Error");
       }
@@ -67,7 +64,6 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-[#050505]">
-        {/* Background Decor */}
         <div className="absolute bottom-0 right-1/2 translate-x-1/2 w-[600px] h-[400px] bg-purple-900/20 rounded-full blur-[100px] -z-10" />
 
         <motion.div 
@@ -80,7 +76,6 @@ export default function LoginPage() {
                 <p className="text-neutral-400 text-sm">Enter your credentials to access the kernel.</p>
             </div>
 
-            {/* --- GOOGLE LOGIN SECTION --- */}
             <div className="flex justify-center mb-6">
                 <GoogleLogin
                     onSuccess={handleGoogleSuccess}
@@ -92,7 +87,6 @@ export default function LoginPage() {
                 />
             </div>
 
-            {/* Divider */}
             <div className="relative mb-6">
                 <div className="absolute inset-0 flex items-center">
                     <span className="w-full border-t border-white/10"></span>
@@ -102,7 +96,6 @@ export default function LoginPage() {
                 </div>
             </div>
 
-            {/* --- STANDARD FORM --- */}
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                 <div className="space-y-1">
                     <label className="text-xs font-mono text-neutral-500 uppercase">Email Protocol</label>
@@ -116,18 +109,33 @@ export default function LoginPage() {
 
                 <div className="space-y-1">
                     <label className="text-xs font-mono text-neutral-500 uppercase">Security Key</label>
-                    <input 
-                        type="password"
-                        {...register("password")}
-                        className="w-full bg-[#111] border border-white/10 rounded-lg px-4 py-3 text-white focus:border-accent focus:outline-none transition-all placeholder-neutral-700"
-                        placeholder="••••••••"
-                    />
+                    <div className="relative">
+                        <input 
+                            type={showPassword ? "text" : "password"}
+                            {...register("password")}
+                            className="w-full bg-[#111] border border-white/10 rounded-lg px-4 py-3 text-white focus:border-accent focus:outline-none transition-all placeholder-neutral-700"
+                            placeholder="••••••••"
+                        />
+                        <button 
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-3 top-3 text-neutral-500 hover:text-white"
+                        >
+                            {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                    </div>
                     {errors.password && <p className="text-red-400 text-xs">{errors.password.message}</p>}
+                </div>
+
+                <div className="flex justify-end">
+                    <Link href="/forgot-password" className="text-[10px] text-neutral-500 hover:text-accent transition-colors">
+                        Forgot Password?
+                    </Link>
                 </div>
 
                 <Button 
                     disabled={isSubmitting}
-                    className="w-full mt-6 h-12 text-base font-bold tracking-wide"
+                    className="w-full mt-2 h-12 text-base font-bold tracking-wide"
                 >
                     {isSubmitting ? "Authenticating..." : "Access System"}
                 </Button>

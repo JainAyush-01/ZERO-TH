@@ -2,21 +2,22 @@
 import { useState, useEffect } from 'react';
 import Editor, { useMonaco } from "@monaco-editor/react";
 import api from '@/lib/api';
-import { Play, Zap, Trash2, ArrowLeft, Loader2 } from 'lucide-react';
+import { Play, Zap, Trash2, ArrowLeft, Loader2, Keyboard, Terminal } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from 'next/link';
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 
-// 1. Define Boilerplates
 const BOILERPLATES: Record<string, string> = {
   javascript: `// JavaScript Playground\nconsole.log('Hello ZEROTH');`,
-  python: `# Python Playground\nprint("Hello ZEROTH")`,
-  cpp: `// C++ Playground\n#include <iostream>\n\nint main() {\n    std::cout << "Hello ZEROTH" << std::endl;\n    return 0;\n}`,
-  java: `// Java Playground\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello ZEROTH");\n    }\n}`
+  python: `# Python Playground\nname = input()\nprint(f"Hello {name}")`,
+  cpp: `// C++ Playground\n#include <iostream>\nusing namespace std;\n\nint main() {\n    string s;\n    cin >> s;\n    cout << "Hello " << s << endl;\n    return 0;\n}`,
+  java: `// Java Playground\nimport java.util.Scanner;\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        String s = sc.next();\n        System.out.println("Hello " + s);\n    }\n}`
 };
 
 export default function Playground() {
   const [language, setLanguage] = useState("javascript");
   const [code, setCode] = useState(BOILERPLATES["javascript"]);
+  const [stdin, setStdin] = useState(""); // <--- NEW: State for input
   const [output, setOutput] = useState("");
   const [isRunning, setIsRunning] = useState(false);
   
@@ -37,7 +38,6 @@ export default function Playground() {
     }
   }, [monaco]);
 
-  // 2. Handle Language Change
   const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newLang = e.target.value;
     setLanguage(newLang);
@@ -47,10 +47,15 @@ export default function Playground() {
   const handleRun = async () => {
     setIsRunning(true);
     try {
-      const { data } = await api.post('/submission/playground', { code, language });
-      setOutput(data.output || data.stdout || data.stderr);
+      // 🚀 PASSING STDIN TO BACKEND
+      const { data } = await api.post('/submission/playground', { 
+        code, 
+        language,
+        stdin 
+      });
+      setOutput(data.output || data.stdout || data.stderr || "Code executed with no output.");
     } catch (err) {
-      toast.error("Execution failed");
+      toast.error("Execution failed. Check network.");
     } finally {
       setIsRunning(false);
     }
@@ -59,7 +64,7 @@ export default function Playground() {
   return (
     <div className="h-screen bg-[#050505] flex flex-col overflow-hidden">
       {/* Toolbar */}
-      <div className="h-14 border-b border-white/5 bg-[#0A0A0A] flex items-center justify-between px-6">
+      <div className="h-14 border-b border-white/5 bg-[#0A0A0A] flex items-center justify-between px-6 z-20 shrink-0">
         <div className="flex items-center gap-6">
             <Link href="/" className="text-neutral-500 hover:text-white transition-colors">
                 <ArrowLeft size={18} />
@@ -69,7 +74,7 @@ export default function Playground() {
             </span>
             <select 
                 value={language} 
-                onChange={handleLanguageChange} // <--- UPDATED HANDLER
+                onChange={handleLanguageChange}
                 className="bg-[#111] border border-white/10 rounded px-3 py-1.5 text-xs text-neutral-300 focus:outline-none focus:border-accent"
             >
                 <option value="javascript">JavaScript</option>
@@ -81,16 +86,18 @@ export default function Playground() {
         <button 
             onClick={handleRun}
             disabled={isRunning}
-            className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold tracking-wide transition-all disabled:opacity-50"
+            className="flex items-center gap-2 px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold tracking-wide transition-all disabled:opacity-50 shadow-[0_0_20px_rgba(16,185,129,0.2)]"
         >
-            {isRunning ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} fill="currentColor" />} 
-            {isRunning ? "Running..." : "Run Code"}
+            {isRunning ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} fill="currentColor" />} 
+            {isRunning ? "Compiling..." : "Run Code"}
         </button>
       </div>
 
-      {/* Editor & Console Split */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-        <div className="flex-1 relative border-r border-white/5">
+      {/* Main Workspace Group */}
+      <PanelGroup direction="horizontal" className="flex-1">
+        
+        {/* LEFT: EDITOR */}
+        <Panel defaultSize={60} minSize={30} className="relative border-r border-white/5 bg-[#050505]">
             <Editor
                 height="100%"
                 theme="nexus-dark"
@@ -103,20 +110,53 @@ export default function Playground() {
                     fontFamily: 'var(--font-mono)',
                     padding: { top: 24 },
                     scrollBeyondLastLine: false,
+                    lineHeight: 22,
                 }}
             />
-        </div>
-        
-        <div className="h-[30%] md:h-full md:w-[40%] bg-[#080808] flex flex-col border-t md:border-t-0 border-white/5">
-            <div className="h-10 border-b border-white/5 px-4 flex items-center justify-between bg-white/[0.02]">
-                <span className="text-xs text-neutral-500 font-mono uppercase tracking-wider">Standard Output</span>
-                <button onClick={() => setOutput("")} className="text-neutral-600 hover:text-red-400 transition-colors"><Trash2 size={14}/></button>
-            </div>
-            <pre className="flex-1 p-6 font-mono text-sm text-neutral-300 overflow-auto whitespace-pre-wrap leading-relaxed">
-                {output || <span className="text-neutral-700 italic">// Run code to see output...</span>}
-            </pre>
-        </div>
-      </div>
+        </Panel>
+
+        <PanelResizeHandle className="w-1 bg-white/5 hover:bg-accent/50 transition-all" />
+
+        {/* RIGHT: INPUT & OUTPUT SPLIT */}
+        <Panel defaultSize={40} minSize={20}>
+            <PanelGroup direction="vertical">
+                
+                {/* TOP: INPUT AREA */}
+                <Panel defaultSize={40} minSize={10} className="flex flex-col bg-[#080808]">
+                    <div className="h-10 border-b border-white/5 px-4 flex items-center gap-2 bg-white/[0.02]">
+                        <Keyboard size={14} className="text-neutral-500" />
+                        <span className="text-[10px] text-neutral-500 font-mono uppercase tracking-widest">Input (Stdin)</span>
+                    </div>
+                    <textarea 
+                        value={stdin}
+                        onChange={(e) => setStdin(e.target.value)}
+                        className="flex-1 p-4 bg-transparent text-neutral-300 font-mono text-sm resize-none outline-none placeholder:text-neutral-700"
+                        placeholder="Type input here..."
+                    />
+                </Panel>
+
+                <PanelResizeHandle className="h-1 bg-white/5 hover:bg-accent/50 transition-all" />
+
+                {/* BOTTOM: OUTPUT AREA */}
+                <Panel defaultSize={60} minSize={10} className="flex flex-col bg-[#050505]">
+                    <div className="h-10 border-b border-white/5 px-4 flex items-center justify-between bg-white/[0.02]">
+                        <div className="flex items-center gap-2">
+                            <Terminal size={14} className="text-neutral-500" />
+                            <span className="text-[10px] text-neutral-500 font-mono uppercase tracking-widest">Output (Stdout)</span>
+                        </div>
+                        <button onClick={() => setOutput("")} className="text-neutral-600 hover:text-red-400 transition-colors">
+                            <Trash2 size={14}/>
+                        </button>
+                    </div>
+                    <pre className="flex-1 p-6 font-mono text-sm text-neutral-300 overflow-auto whitespace-pre-wrap leading-relaxed">
+                        {output || <span className="text-neutral-800 italic">// Run code to generate output...</span>}
+                    </pre>
+                </Panel>
+
+            </PanelGroup>
+        </Panel>
+
+      </PanelGroup>
     </div>
   );
 }

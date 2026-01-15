@@ -9,7 +9,9 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
-import { Loader2, Mail, Lock, User, KeyRound } from "lucide-react";
+import { Loader2, Mail, Lock, User, KeyRound, Eye, EyeOff } from "lucide-react";
+import { GoogleLogin } from '@react-oauth/google';
+import { useQueryClient } from "@tanstack/react-query";
 
 // 1. Validation Schema
 const registerSchema = z.object({
@@ -23,8 +25,10 @@ type RegisterForm = z.infer<typeof registerSchema>;
 
 export default function RegisterPage() {
   const router = useRouter();
+  const queryClient = useQueryClient(); // Init Client
   const [otpSent, setOtpSent] = useState(false);
   const [otpLoading, setOtpLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const { register, handleSubmit, getValues, formState: { errors, isSubmitting } } = useForm<RegisterForm>({
     resolver: zodResolver(registerSchema),
@@ -50,6 +54,17 @@ export default function RegisterPage() {
     } finally {
         setOtpLoading(false);
     }
+  };
+
+  const handleGoogleSuccess = async (credentialResponse: any) => {
+      try {
+          await api.post('/user/google', { idToken: credentialResponse.credential });
+          await queryClient.invalidateQueries({ queryKey: ["auth-user"] });
+          toast.success("Account Created via Google");
+          router.push("/problems");
+      } catch (err: any) {
+          toast.error("Google Registration Failed");
+      }
   };
 
   // 3. Action: Final Registration
@@ -79,6 +94,22 @@ export default function RegisterPage() {
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">Initialize ID</h1>
           <p className="text-neutral-400 text-sm">Join the algorithmic elite.</p>
+        </div>
+
+        <div className="flex justify-center mb-6">
+            <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={() => toast.error("Google Failed")}
+                theme="filled_black"
+                shape="pill"
+                width="100%"
+                text="signup_with"
+            />
+        </div>
+
+        <div className="relative mb-6">
+            <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-white/10"></span></div>
+            <div className="relative flex justify-center text-[10px] uppercase font-mono tracking-wider"><span className="bg-[#0A0A0A] px-2 text-neutral-500">Or email</span></div>
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -145,12 +176,21 @@ export default function RegisterPage() {
             <label className="text-[10px] font-mono text-neutral-500 uppercase flex items-center gap-2">
                 <Lock size={12} /> Security Key
             </label>
-            <input 
-              type="password"
-              {...register("password")}
-              className="w-full bg-[#111] border border-white/10 rounded-lg px-4 py-3 text-white focus:border-accent focus:outline-none transition-all placeholder-neutral-700"
-              placeholder="••••••••"
-            />
+            <div className="relative">
+                <input 
+                  type={showPassword ? "text" : "password"} // Toggle type
+                  {...register("password")}
+                  className="w-full bg-[#111] border border-white/10 rounded-lg px-4 py-3 text-white focus:border-accent focus:outline-none transition-all placeholder-neutral-700"
+                  placeholder="••••••••"
+                />
+                <button 
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-3 text-neutral-500 hover:text-white"
+                >
+                    {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+            </div>
             {errors.password && <p className="text-red-400 text-xs">{errors.password.message}</p>}
           </div>
 

@@ -151,8 +151,11 @@ const googleAuth = async (req, res) => {
 
         res.status(200).json({ message: "Google Login Successful" });
     } catch (err) {
-        console.error("Google Auth Error:", err);
-        res.status(401).send("Invalid Google Token");
+        console.error("Google Auth Error:", err.message);
+        res.status(401).json({ 
+            message: "Invalid Google Token", 
+            error: err.message // This helps us see if it's an "audience mismatch"
+        });
     }
 };
 

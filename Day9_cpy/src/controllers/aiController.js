@@ -21,9 +21,9 @@ const askAI = async (req, res) => {
         - Keep responses concise, technical, and professional. Avoid "fluff" talk.
         `;
 
-        // 2. Initialize Model (Using gemini-2.0-flash for speed/cost or gemini-1.5-pro for reasoning)
+        // 2. Initialize Model (Using gemini-3.5-flash for speed/cost or gemini-3.1-pro for reasoning)
         const model = genAI.getGenerativeModel({ 
-            model: "gemini-2.0-flash",
+            model: "gemini-3.5-flash",
             systemInstruction: systemInstruction
         });
 

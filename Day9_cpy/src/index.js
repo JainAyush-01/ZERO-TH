@@ -28,7 +28,7 @@ const io = new Server(server, {
         // ALLOW BOTH LOCAL AND PRODUCTION
         origin: [
             "http://localhost:3000",
-            "https://zero-th.vercel.app" // <--- MUST MATCH EXACTLY (No trailing slash)
+            "https://zero-th.vercel.app"
         ],
         methods: ["GET", "POST"],
         credentials: true
@@ -170,17 +170,17 @@ io.on('connection', (socket) => {
 
 const InitializeConnection = async () => {
     try {
-        // MAKE SURE REDIS IS INCLUDED HERE 👇
+        
         await Promise.all([main(), redisClient.connect()]);
         
-        console.log("✅ DB & Redis Connected");
+        console.log("DB & Redis Connected");
 
         const PORT = process.env.PORT || 5000;
         server.listen(PORT, "0.0.0.0", () => {
              console.log(`Server running on Port ${PORT}`);
         });
     } catch (err) {
-        console.error("❌ Startup Error:", err);
+        console.error("Startup Error:", err);
     }
 }
 

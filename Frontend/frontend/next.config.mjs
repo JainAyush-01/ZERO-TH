@@ -7,7 +7,7 @@ const nextConfig = {
         headers: [
           {
             key: 'Cross-Origin-Opener-Policy',
-            value: 'same-origin-allow-popups', // 🚀 Allows Google Auth to work
+            value: 'same-origin-allow-popups', 
           },
         ],
       },

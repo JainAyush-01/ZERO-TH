@@ -21,7 +21,7 @@ const calculateSM2 = (quality, prevRepetition, prevInterval, prevEaseFactor) => 
         }
         repetition += 1;
     } else {
-        // 🚀 SMART FAILURE LOGIC
+        // SMART FAILURE LOGIC
         // Instead of resetting to 0 (repetition = 0, interval = 1)
         // We reduce the interval significantly but keep some credit
         

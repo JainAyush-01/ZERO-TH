@@ -19,7 +19,7 @@ export const useProblems = (filters: Filters) => {
             return data;
         },
         placeholderData: (previousData) => previousData,
-        enabled: filters.enabled, // <--- USE IT HERE (If false, query won't run)
+        enabled: filters.enabled, 
         retry: 1
     });
 };

@@ -96,7 +96,6 @@ const getContestById = async (req, res) => {
         // 2. CHECK IF EXISTS
         if (!contest) return res.status(404).send("Contest not found");
 
-        // ... (Rest of the logic remains the same) ...
         const now = new Date();
         const hasStarted = now >= contest.startTime;
         const participant = contest.participants.find(p => p.userId.toString() === userId.toString());
@@ -126,7 +125,6 @@ const getContestById = async (req, res) => {
         res.status(500).send("Error fetching contest");
     }
 };
-// ... existing imports ...
 
 // 4. Submit & Score Contest Solution
 const submitContestSolution = async (req, res) => {
@@ -155,7 +153,6 @@ const submitContestSolution = async (req, res) => {
             return res.status(400).send("Problem already solved");
         }
 
-        // 🚀 NEW LOGIC: Get Points from DB Configuration
         const contestProblem = contest.problems.find(p => p.problemId.toString() === problemId);
         if (!contestProblem) return res.status(400).send("Problem not part of this contest");
         
@@ -185,7 +182,6 @@ const submitContestSolution = async (req, res) => {
         if (isAccepted) {
             statusUpdate = 'solved';
             
-            // 🚀 USE DYNAMIC POINTS
             scoreUpdate = problemPoints;
 
             // Time Penalty
@@ -245,7 +241,7 @@ const submitContestSolution = async (req, res) => {
                     statusId: failedCase.statusId,
                     status: failedCase.status, // e.g., "Wrong Answer" or "TLE"
                     testCase: failedCase.testCase,
-                    // 🛑 CENSOR THESE FIELDS
+                    
                     input: "Hidden Test Case",
                     expected: "Hidden",
                     actual: "Hidden",

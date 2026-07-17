@@ -15,7 +15,7 @@ const sendOTPEmail = async (email, otp) => {
     subject: "Your Verification Code",
     htmlContent: `
       <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-        <h2>🔐 Verification Code</h2>
+        <h2> Verification Code</h2>
         <p>Your OTP for ZEROTH is:</p>
         <h1 style="color: #4f46e5; letter-spacing: 5px;">${otp}</h1>
         <p style="color: #666; font-size: 12px;">This code expires in 5 minutes.</p>
@@ -31,10 +31,10 @@ const sendOTPEmail = async (email, otp) => {
         'accept': 'application/json'
       }
     });
-    console.log("✅ Email sent via Brevo HTTP:", response.data.messageId);
+    console.log("Email sent via Brevo HTTP:", response.data.messageId);
     return response.data;
   } catch (error) {
-    console.error("❌ Brevo API Failed:", error.response?.data || error.message);
+    console.error("Brevo API Failed:", error.response?.data || error.message);
     throw error;
   }
 };

@@ -46,10 +46,6 @@ const submitReview = async (req, res) => {
         let item = await Mastery.findOne({ userId, problemId });
         if (!item) item = new Mastery({ userId, problemId });
 
-        // Anti-spam check (keep your existing 12hr check here)
-        // ...
-
-        // ... (SM-2 Logic calls) ...
         const { repetition, interval, easeFactor } = calculateSM2(quality, item.repetition, item.interval, item.easeFactor);
         
         item.repetition = repetition;
@@ -62,7 +58,6 @@ const submitReview = async (req, res) => {
         
         await item.save();
 
-        // 🚀 OPTIMIZED STREAK LOGIC
         // We only write to User DB if they haven't updated streak today
         const user = await User.findById(userId);
         const today = new Date();

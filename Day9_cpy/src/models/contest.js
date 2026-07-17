@@ -7,7 +7,6 @@ const contestSchema = new Schema({
     startTime: { type: Date, required: true },
     endTime: { type: Date, required: true },
     
-    // 🚀 UPDATED: Now stores ID + Points explicitly
     problems: [{
         problemId: { type: Schema.Types.ObjectId, ref: 'problem' },
         points: { type: Number, required: true } 

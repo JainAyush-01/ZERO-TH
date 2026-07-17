@@ -18,7 +18,7 @@ export default function VaultPage() {
   const upcoming = data?.upcoming || [];
   const stats = data?.stats || { total: 0, health: 100, streak: 0, isActiveToday: false };
 
-  // 🚀 CLIENT-SIDE GROUPING (BULLETPROOF VERSION)
+  // CLIENT-SIDE GROUPING (BULLETPROOF VERSION)
   const groupedDue = due.reduce((acc: any, item: any) => {
       // 1. Safe Access: Check if problemId exists (deleted problems?)
       const tagString = item.problemId?.tags || ""; 

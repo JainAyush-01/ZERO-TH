@@ -1,7 +1,7 @@
 const Contest = require('../models/contest');
 const User = require('../models/user');
-const Problem = require('../models/problem'); // <--- CORRECT: Capitalized Model
-const Submission = require('../models/submission'); // <--- Added missing import
+const Problem = require('../models/problem'); 
+const Submission = require('../models/submission'); 
 const { bulkJudge } = require('../utils/codeRunner');
 const mongoose = require('mongoose');   
 

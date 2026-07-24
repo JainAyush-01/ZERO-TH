@@ -1,6 +1,7 @@
 const Contest = require('../models/contest');
 const User = require('../models/user');
-const problem = require('../models/problem')
+const Problem = require('../models/problem'); // <--- CORRECT: Capitalized Model
+const Submission = require('../models/submission'); // <--- Added missing import
 const { bulkJudge } = require('../utils/codeRunner');
 const mongoose = require('mongoose');   
 
@@ -32,17 +33,16 @@ const createContest = async (req, res) => {
 const getAllContests = async (req, res) => {
     try {
         const contests = await Contest.find({})
-            .select('title startTime endTime status participants.length') // Lightweight
-            .sort({ startTime: 1 }); // Soonest first
+            .select('title startTime endTime status participants.length') 
+            .sort({ startTime: 1 }); 
 
-        // Calculate status dynamically (Optional, but good for UI)
         const now = new Date();
         const updatedContests = contests.map(c => {
             let status = 'upcoming';
             if (now > c.endTime) status = 'ended';
             else if (now >= c.startTime && now <= c.endTime) status = 'active';
             
-            return { ...c.toObject(), status }; // Return computed status
+            return { ...c.toObject(), status }; 
         });
 
         res.status(200).json(updatedContests);
@@ -54,7 +54,7 @@ const getAllContests = async (req, res) => {
 // 3. Register for Contest (User)
 const registerForContest = async (req, res) => {
     try {
-        const { id } = req.params; // Contest ID
+        const { id } = req.params; 
         const userId = req.result._id;
 
         const contest = await Contest.findById(id);
@@ -64,7 +64,6 @@ const registerForContest = async (req, res) => {
             return res.status(400).send("Contest has ended");
         }
 
-        // Check if already registered
         const isRegistered = contest.participants.some(p => p.userId.toString() === userId.toString());
         if (isRegistered) {
             return res.status(400).send("Already registered");
@@ -79,21 +78,17 @@ const registerForContest = async (req, res) => {
     }
 };
 
-// ... existing imports
-
 const getContestById = async (req, res) => {
     try {
         const { id } = req.params;
         const userId = req.result._id;
 
-        // 1. VALIDATE ID FORMAT (Prevents System Error 500)
         if (!mongoose.Types.ObjectId.isValid(id)) {
             return res.status(404).send("Contest not found");
         }
 
         const contest = await Contest.findById(id).populate('problems', 'title difficulty');
         
-        // 2. CHECK IF EXISTS
         if (!contest) return res.status(404).send("Contest not found");
 
         const now = new Date();
@@ -132,7 +127,6 @@ const submitContestSolution = async (req, res) => {
         const { contestId, problemId, code, language } = req.body;
         const userId = req.result._id;
 
-        // A. Validate Contest & Time
         const contest = await Contest.findById(contestId);
         if (!contest) return res.status(404).send("Contest not found");
 
@@ -141,11 +135,9 @@ const submitContestSolution = async (req, res) => {
             return res.status(400).send("Contest is not active");
         }
 
-        // B. Check Registration
         const participantIndex = contest.participants.findIndex(p => p.userId.toString() === userId.toString());
         if (participantIndex === -1) return res.status(403).send("Not registered");
 
-        // C. Check Previous Status
         const participant = contest.participants[participantIndex];
         const existingProgress = participant.submissionHistory.find(h => h.problemId.toString() === problemId);
         
@@ -156,10 +148,11 @@ const submitContestSolution = async (req, res) => {
         const contestProblem = contest.problems.find(p => p.problemId.toString() === problemId);
         if (!contestProblem) return res.status(400).send("Problem not part of this contest");
         
-        const problemPoints = contestProblem.points; // <--- DYNAMIC POINTS
+        const problemPoints = contestProblem.points; 
 
-        // D. Run Code
-        const problem = await problem.findById(problemId);
+        // <--- CORRECT: Uppercase Model, lowercase instance
+        const problem = await Problem.findById(problemId); 
+        
         const testCases = [...problem.visibleTestCases, ...problem.hiddenTestCases].map(tc => ({
             input: tc.input,
             expected: tc.output
@@ -173,7 +166,6 @@ const submitContestSolution = async (req, res) => {
         const isAccepted = results.every(r => r.statusId === 3);
         const failedCase = results.find(r => r.statusId !== 3);
 
-        // E. Calculate Penalties & Score
         let penaltyUpdate = 0;
         let scoreUpdate = 0;
         let statusUpdate = 'attempted';
@@ -181,26 +173,17 @@ const submitContestSolution = async (req, res) => {
 
         if (isAccepted) {
             statusUpdate = 'solved';
-            
             scoreUpdate = problemPoints;
-
-            // Time Penalty
             const minutesTaken = Math.floor((now - contest.startTime) / 60000);
             const prevFails = existingProgress ? existingProgress.failCount : 0;
-            
-            // Standard ICPC Penalty: Time + (20 mins * Wrong). 
-            // LeetCode usually does Time + (5 mins * Wrong).
             penaltyUpdate = minutesTaken + (prevFails * 5); 
         } else {
             failCountIncrement = 1;
         }
 
-        // F. Update Database (Same as before)
         if (!existingProgress) {
             contest.participants[participantIndex].submissionHistory.push({
-                problemId,
-                status: statusUpdate,
-                failCount: failCountIncrement,
+                problemId, status: statusUpdate, failCount: failCountIncrement,
                 solvedAt: isAccepted ? now : null
             });
         } else {
@@ -217,7 +200,6 @@ const submitContestSolution = async (req, res) => {
 
         await contest.save();
 
-        // G. Log Global Submission
         await Submission.create({
             userId, problemId, code, language, 
             status: isAccepted ? 'accepted' : 'wrong',
@@ -227,32 +209,24 @@ const submitContestSolution = async (req, res) => {
         });
 
         let sanitizedError = null;
-
         if (failedCase) {
-            // Check if this input matches any VISIBLE test case
             const isVisible = problem.visibleTestCases.some(vtc => vtc.input.trim() === failedCase.input.trim());
-            
             if (isVisible) {
-                // Allowed to see details (It's a sample case)
                 sanitizedError = failedCase;
             } else {
-                // HIDDEN CASE: Censored Response
                 sanitizedError = {
                     statusId: failedCase.statusId,
-                    status: failedCase.status, // e.g., "Wrong Answer" or "TLE"
+                    status: failedCase.status, 
                     testCase: failedCase.testCase,
-                    
-                    input: "Hidden Test Case",
-                    expected: "Hidden",
-                    actual: "Hidden",
-                    error: "Output hidden during contest"
+                    input: "Hidden Test Case", expected: "Hidden",
+                    actual: "Hidden", error: "Output hidden during contest"
                 };
             }
         }
 
         res.status(200).json({
             status: isAccepted ? 'Accepted' : 'Failed',
-            errorDetails: sanitizedError, // Send the sanitized version
+            errorDetails: sanitizedError, 
             score: contest.participants[participantIndex].score
         });
 
@@ -261,8 +235,6 @@ const submitContestSolution = async (req, res) => {
         res.status(500).send("Contest Engine Error");
     }
 };
-
-// ... existing imports
 
 // 5. Get Live Leaderboard
 const getContestLeaderboard = async (req, res) => {
@@ -275,9 +247,6 @@ const getContestLeaderboard = async (req, res) => {
 
         if (!contest) return res.status(404).send("Contest not found");
 
-        // SORTING LOGIC:
-        // 1. Higher Score wins.
-        // 2. If Score equals, Lower TimePenalty wins.
         const leaderboard = contest.participants
             .map(p => ({
                 userId: p.userId._id,
@@ -288,8 +257,8 @@ const getContestLeaderboard = async (req, res) => {
                 finishTime: p.finishTime
             }))
             .sort((a, b) => {
-                if (b.score !== a.score) return b.score - a.score; // Higher score first
-                return a.timePenalty - b.timePenalty; // Lower penalty first
+                if (b.score !== a.score) return b.score - a.score; 
+                return a.timePenalty - b.timePenalty; 
             });
 
         res.status(200).json(leaderboard);
@@ -300,10 +269,6 @@ const getContestLeaderboard = async (req, res) => {
 };
 
 module.exports = { 
-    createContest, 
-    getAllContests, 
-    registerForContest, 
-    getContestById, 
-    submitContestSolution,
-    getContestLeaderboard // <--- Export
+    createContest, getAllContests, registerForContest, 
+    getContestById, submitContestSolution, getContestLeaderboard 
 };

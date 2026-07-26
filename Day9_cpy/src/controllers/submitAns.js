@@ -173,6 +173,38 @@ const runPlayground = async (req, res) => {
         res.status(500).send("Playground Error: " + err.message);
     }
 }
+
+// 3. Run Code (Playground for specific problem - NO DB SAVE)
+const RunCode = async (req, res) => {
+    try {
+        const problemId = req.params.id || req.body.problemId;
+        const { code, language } = req.body;
+
+        if (!code || !language || !problemId) {
+            return res.status(400).send("Missing required fields");
+        }
+
+        const getProblem = await Problem.findById(problemId);
+        if (!getProblem) return res.status(400).send("Problem Does not exist");
+
+        const driver = getProblem.driverCode.find(item => item.language === language);
+        if (!driver) return res.status(400).send("Driver missing");
+
+        // For "Run Code", we ONLY run the visible test cases (Sample test cases)
+        const sampleTestCases = getProblem.visibleTestCases.map(tc => ({
+            input: tc.input, expected: tc.output
+        }));
+
+        const validationResults = await runCode(code, driver.Code, language, sampleTestCases);
+
+        // Send the raw execution results directly back to the frontend UI
+        res.status(200).json(validationResults);
+    } catch (err) {
+        console.error("RunCode Error:", err);
+        res.status(500).send("Error running code: " + err.message);
+    }
+}
+
 // ADMIN: Fetch all submissions (Global History)
 const getAllSubmissions = async (req, res) => {
     try {

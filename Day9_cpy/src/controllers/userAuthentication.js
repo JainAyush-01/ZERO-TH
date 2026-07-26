@@ -162,34 +162,62 @@ const googleAuth = async (req, res) => {
 // 5. SEND OTP (For Registration)
 const sendOtp = async (req, res) => {
     try {
-        const { emailId, type } = req.body; // type can be 'register' or 'reset'
+        const { emailId, type } = req.body; 
         if (!emailId) return res.status(400).send("Email required");
 
         const userExists = await Users.exists({ emailId });
-
-        // Logic: If registering, user shouldn't exist. If resetting, user MUST exist.
-        if (type === 'register' && userExists) {
-            return res.status(400).send("Email already registered");
-        }
-        if (type === 'reset' && !userExists) {
-            return res.status(404).send("User not found");
-        }
+        if (type === 'register' && userExists) return res.status(400).send("Email already registered");
+        if (type === 'reset' && !userExists) return res.status(404).send("User not found");
 
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        
+        // MAANG FIX: Save OTP and initialize an attempts counter in Redis
         await redisClient.set(`otp:${emailId}`, otp, { EX: 300 });
+        await redisClient.set(`otp_attempts:${emailId}`, 0, { EX: 300 }); 
 
         try {
             await sendOTPEmail(emailId, otp);
             res.status(200).json({ message: "OTP sent to email" });
         } catch (emailError) {
-            console.error("Email failed, fallback:", emailError);
             console.log(`🔐 FALLBACK OTP FOR ${emailId}: ${otp}`);
             res.status(200).json({ message: "Email service busy. Check console (Dev)." });
         }
-
     } catch (err) {
-        console.error(err);
         res.status(500).send("System Error");
+    }
+}
+
+// 7. RESET PASSWORD (Finalize)
+const resetPassword = async (req, res) => {
+    try {
+        const { emailId, otp, newPassword } = req.body;
+        
+        // MAANG FIX: Brute Force Defense using Redis INCR
+        const attemptsKey = `otp_attempts:${emailId}`;
+        const attempts = await redisClient.incr(attemptsKey); // Atomically increments by 1
+        
+        if (attempts > 5) {
+            await redisClient.del(`otp:${emailId}`); // Destroy the OTP
+            await redisClient.del(attemptsKey);
+            return res.status(429).send("Too many failed attempts. Please request a new OTP.");
+        }
+
+        const storedOtp = await redisClient.get(`otp:${emailId}`);
+        if (!storedOtp || storedOtp !== otp) {
+            return res.status(400).send(`Invalid OTP. You have ${5 - attempts} attempts left.`);
+        }
+
+        // If successful, hash password and update
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        await Users.findOneAndUpdate({ emailId }, { password: hashedPassword });
+        
+        // Cleanup Redis
+        await redisClient.del(`otp:${emailId}`);
+        await redisClient.del(attemptsKey);
+
+        res.status(200).send("Password Updated Successfully");
+    } catch(err) {
+        res.status(500).send("Error resetting password");
     }
 }
 
@@ -214,26 +242,6 @@ const forgotPassword = async (req, res) => {
         }
     } catch(err) {
         res.status(500).send("Error");
-    }
-}
-
-// 7. RESET PASSWORD (Finalize)
-const resetPassword = async (req, res) => {
-    try {
-        const { emailId, otp, newPassword } = req.body;
-        
-        const storedOtp = await redisClient.get(`reset_otp:${emailId}`);
-        if(!storedOtp || storedOtp !== otp) {
-            return res.status(400).send("Invalid or Expired OTP");
-        }
-
-        const hashedPassword = await bcrypt.hash(newPassword, 10);
-        await Users.findOneAndUpdate({ emailId }, { password: hashedPassword });
-        
-        await redisClient.del(`reset_otp:${emailId}`);
-        res.status(200).send("Password Updated Successfully");
-    } catch(err) {
-        res.status(500).send("Error resetting password");
     }
 }
 

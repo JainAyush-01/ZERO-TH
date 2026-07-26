@@ -4,8 +4,16 @@ const Mastery = require('../models/mastery');
 const runCode = require('../utils/codeRunner');
 const Problem = require('../models/problem');
 
+const CODE_STATUS = {
+    ACCEPTED: 3,
+    WRONG_ANSWER: 4,
+    TIME_LIMIT_EXCEEDED: 5,
+    COMPILATION_ERROR: 6,
+    RUNTIME_ERROR: 11,
+    SERVER_ERROR: 13
+};
+
 const submitAns = async (req, res) => {
-    // We declare this outside try so we can access it in catch for error logging
     let submittedResult = null; 
 
     try {
@@ -19,39 +27,29 @@ const submitAns = async (req, res) => {
         const getProblem = await Problem.findById(problemId);
         if (!getProblem) return res.status(400).send("Problem Does not exists");
 
-        // 1. SAVE "PENDING" STATE (Checkpoint 1)
-        // If server dies immediately after this, we have a record that user tried.
+        // 1. Checkpoint 1: Save Pending
         submittedResult = await Submission.create({
-            userId,
-            problemId,
-            code,
-            language,
-            status: 'pending',
+            userId, problemId, code, language, status: 'pending',
             testCasesTotal: getProblem.hiddenTestCases.length + getProblem.visibleTestCases.length
         });
 
         // 2. Prepare Execution
-        const visibleTestCases = getProblem.visibleTestCases;
-        const hiddenTestCases = getProblem.hiddenTestCases;
-        const allTestCases = [...visibleTestCases, ...hiddenTestCases].map(tc => ({
-            input: tc.input,
-            expected: tc.output
+        const allTestCases = [...getProblem.visibleTestCases, ...getProblem.hiddenTestCases].map(tc => ({
+            input: tc.input, expected: tc.output
         }));
 
         const driver = getProblem.driverCode.find(item => item.language === language);
         if (!driver) {
-            // Update DB to error state before returning
             submittedResult.status = 'error';
             submittedResult.errorMessage = "Driver Missing";
             await submittedResult.save();
-            return res.status(400).json({ success: false, message: `Driver missing for language: ${language}.` });
+            return res.status(400).json({ success: false, message: `Driver missing.` });
         }
 
-        // 3. Run Code (The Heavy Operation)
+        
         const validationResults = await runCode(code, driver.Code, language, allTestCases);
 
-        // Check for Judge Server Failures
-        const serverError = validationResults.find(result => result.statusId === 13);
+        const serverError = validationResults.find(result => result.statusId === CODE_STATUS.SERVER_ERROR);
         if (serverError) {
             submittedResult.status = 'error';
             submittedResult.errorMessage = "Judge Server Busy";
@@ -60,66 +58,48 @@ const submitAns = async (req, res) => {
         }
 
         // 4. Analyze Results
-        const passedCount = validationResults.filter(resu => resu.statusId === 3).length;
-        const failedCase = validationResults.find(resu => resu.statusId != 3);
+        const passedCount = validationResults.filter(resu => resu.statusId === CODE_STATUS.ACCEPTED).length;
+        const failedCase = validationResults.find(resu => resu.statusId !== CODE_STATUS.ACCEPTED);
 
         let totalRuntime = 0;
         validationResults.forEach(item => { if (item.runtime) totalRuntime += parseFloat(item.runtime); });
 
         let status = 'accepted';
         if (failedCase) {
-            if (failedCase.statusId == 6 || failedCase.statusId == 11) status = 'error';
-            else if (failedCase.statusId == 5) status = 'TLE';
-            else if (failedCase.statusId == 4) status = 'wrong';
+            if (failedCase.statusId === CODE_STATUS.COMPILATION_ERROR || failedCase.statusId === CODE_STATUS.RUNTIME_ERROR) status = 'error';
+            else if (failedCase.statusId === CODE_STATUS.TIME_LIMIT_EXCEEDED) status = 'TLE';
+            else if (failedCase.statusId === CODE_STATUS.WRONG_ANSWER) status = 'wrong';
         }
 
-        // 5. SAVE FINAL RESULT (Checkpoint 2 - CRITICAL)
-        // We save BEFORE updating User/Mastery. 
-        // This ensures the user sees their result even if the profile update crashes.
+        // 5. Checkpoint 2: Save Final
         submittedResult.status = status;
         submittedResult.errorMessage = failedCase ? failedCase.error : "";
         submittedResult.testCasesPassed = passedCount;
         submittedResult.runtime = totalRuntime;
-        
         await submittedResult.save(); 
 
-        // 6. Secondary Updates (User & Mastery)
-        // These are "Side Effects". If they fail, the submission is still valid.
         let inVault = false;
-
         if (status === 'accepted') {
             try {
-                // A. Update User Profile
-                await User.findByIdAndUpdate(userId, {
-                    $addToSet: { problemSolved: problemId }
-                });
+         
+                await User.findByIdAndUpdate(userId, { $addToSet: { problemSolved: problemId } });
 
-                // B. Update Mastery Vault
                 const masteryEntry = await Mastery.findOne({ userId, problemId });
                 if (masteryEntry) {
                     inVault = true;
                 } else {
-                    const nextDay = new Date();
-                    nextDay.setDate(nextDay.getDate() + 1);
-                    
+                    const nextDay = new Date(); nextDay.setDate(nextDay.getDate() + 1);
                     await Mastery.create({
-                        userId,
-                        problemId,
-                        repetition: 1, 
-                        interval: 1,   
-                        easeFactor: 2.5,
-                        nextReviewDate: nextDay,
-                        lastReviewedAt: new Date()
+                        userId, problemId, repetition: 1, interval: 1, easeFactor: 2.5,
+                        nextReviewDate: nextDay, lastReviewedAt: new Date()
                     });
                     inVault = true;
                 }
             } catch (secondaryErr) {
-                // Log this, but DO NOT crash the request. The user's code ran successfully.
                 console.error("Secondary Update Failed:", secondaryErr);
             }
         }
 
-        // 7. Send Response
         res.status(201).json({
             ...submittedResult.toObject(),
             errorDetails: failedCase ? failedCase : null,
@@ -127,102 +107,39 @@ const submitAns = async (req, res) => {
         });
 
     } catch (err) {
-        console.error("Critical Submission Error:", err);
-        
-        // 8. FAILSAFE: Update DB to reflect the crash
         if (submittedResult) {
-            try {
-                submittedResult.status = 'error';
-                submittedResult.errorMessage = "Internal Server Error during processing";
-                await submittedResult.save();
-            } catch (saveErr) {
-                console.error("Could not save fallback error status", saveErr);
-            }
+            submittedResult.status = 'error';
+            submittedResult.errorMessage = "Internal Server Error";
+            await submittedResult.save();
         }
-
         res.status(500).send("Internal Server Error: " + err.message);
     }
 }
 
-const RunCode = async (req, res) => {
-    try {
-        const userId = req.result._id;
-        const problemId = req.params.id;
-        const { code, language, input } = req.body;
-
-        if (!userId || !problemId || !code || !language)
-            return res.status(400).send("Data is Missing");
-
-        const getProblem = await Problem.findById(problemId);
-        if (!getProblem) return res.status(400).send("Problem Does not exists");
-
-        let allTestCases = [];
-        
-        if (input) {
-            // CUSTOM INPUT MODE
-            // We strip newlines to ensure clean input parsing
-            allTestCases = [{ input: input.trim(), expected: "Custom Run" }]; 
-        } else {
-            // DEFAULT TEST CASES
-            allTestCases = getProblem.visibleTestCases.map(tc => ({
-                input: tc.input,
-                expected: tc.output
-            }));
-        }
-        
-        const driver = getProblem.driverCode.find(item => item.language === language);
-        if (!driver) {
-            return res.status(400).json({ success: false, message: `Driver missing for language: ${language}.` });
-        }
-
-        // Run Code
-        // Note: For Custom Input, we don't care about "Wrong Answer" status, we just want the output.
-        // So we pass a flag or handle the result differently.
-        const validationResults = await runCode(code, driver.Code, language, allTestCases);
-
-        // If custom input, we force status to 'Accepted' if it ran, so the UI shows the output
-        if (input && validationResults.length > 0) {
-            validationResults[0].status = "Ran Successfully";
-            // We clear the error if it was just a mismatch with "Custom Run" expected string
-            if (validationResults[0].statusId === 4) {
-                validationResults[0].statusId = 3; 
-                validationResults[0].error = null;
-            }
-        }
-
-        res.status(201).send(validationResults);
-    }
-    catch(err) {
-        res.status(500).send("Internal Server Error " + err);
-    }
-}
-
-
-
+// FIXED: Added Pagination and Note on Indexing
 const fetchUserHistory = async (req, res) => {
     try {
         const userId = req.result._id;
+        let page = parseInt(req.query.page) || 1;
+        if (page < 1) page = 1;
+        const limit = 10;
+        const skip = (page - 1) * limit;
         
-        // Find all submissions by this user
-        const history = await Submission.find({ userId: userId }) // Mongoose auto-casts this usually
-            .sort({ createdAt: -1 }) // Newest first
-            .limit(10)
-            .populate('problemId', 'title difficulty'); // Ensure 'problemId' matches your Problem model Ref name
-
-        // DEBUGGING: If history is empty, check if we have ANY submissions
-        if (history.length === 0) {
-             console.log(`No history found for User: ${userId}`);
-        }
+        /* Note: Ensure MongoDB has a compound index: { userId: 1, createdAt: -1 } */
+        const history = await Submission.find({ userId: userId }) 
+            .sort({ createdAt: -1 }) 
+            .skip(skip)
+            .limit(limit)
+            .populate('problemId', 'title difficulty'); 
 
         res.status(200).json(history);
     } catch (err) {
-        console.error("History Error:", err);
         res.status(500).send("Error fetching history");
     }
 }
 
+
 // 2. Playground Runner (Raw Piston Execution)
-// 2. Playground/Interview Runner (Raw Piston Execution)
 const runPlayground = async (req, res) => {
     try {
         const { code, language, stdin } = req.body; // <--- Capture stdin
@@ -286,9 +203,6 @@ const getAllSubmissions = async (req, res) => {
     }
 }
 
-// Add to exports
-// ... existing imports
-
 const getSubmissionById = async (req, res) => {
     try {
         const { id } = req.params;
@@ -307,12 +221,11 @@ const getSubmissionById = async (req, res) => {
     }
 }
 
-// Don't forget to export it!
 module.exports = { 
     submitAns, 
     RunCode, 
     fetchUserHistory, 
     runPlayground, 
     getAllSubmissions, 
-    getSubmissionById // <--- Added
+    getSubmissionById 
 };

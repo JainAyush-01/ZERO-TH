@@ -3,240 +3,101 @@ const runCode = require('../utils/codeRunner');
 const User = require('../models/user');
 const Submission = require('../models/submission');
 
+// --- HELPER FUNCTION: Extracts the repeated execution logic! ---
+const validateReferenceSolutions = async (referenceSolution, driverCode, allTestCases) => {
+    
+    for (const sol of referenceSolution) {
+        const lang = sol.language;
+        const driver = driverCode.find(d => d.language === lang);
+        
+        if (!driver) return { error: `Driver missing for language: ${lang}.` };
+
+        const validationResults = await runCode(sol.CompleteCode, driver.Code, lang, allTestCases);
+
+        const serverError = validationResults.find(result => result.statusId === 13);
+        if (serverError) return { error: "Judge server is busy. Retry later.", isServerBusy: true };
+
+        const failedCase = validationResults.find(result => result.statusId !== 3);
+        if (failedCase) {
+            return {
+                error: `Reference solution is incorrect for ${lang}.`,
+                details: {
+                    status: failedCase.status, testCase: failedCase.testCase,
+                    expected: failedCase.expected, actual: failedCase.actual, compileError: failedCase.error
+                }
+            };
+        }
+    }
+    return { success: true };
+};
+
 const createProblem = async (req, res) => {
-    // 1. Destructure req.body
-    const {
-        title,
-        description,
-        difficulty,
-        tags,
-        visibleTestCases,
-        hiddenTestCases,
-        startCode,
-        referenceSolution,
-        driverCode,status, visibility
-    } = req.body;
+    const { title, description, difficulty, tags, visibleTestCases, hiddenTestCases, startCode, referenceSolution, driverCode, status, visibility } = req.body;
 
     try {
-        // --- A. MANUAL VALIDATION (Important before hitting API) ---
         if (!title || !description || !referenceSolution || !driverCode) {
-            return res.status(400).json({
-                success: false,
-                message: "Incomplete Data"
+            return res.status(400).json({ success: false, message: "Incomplete Data" });
+        }
+
+        const allTestCases = [...visibleTestCases, ...hiddenTestCases].map(tc => ({ input: tc.input, expected: tc.output }));
+
+        // Use the helper function here!
+        const validation = await validateReferenceSolutions(referenceSolution, driverCode, allTestCases);
+        if (!validation.success) {
+            return res.status(validation.isServerBusy ? 503 : 422).json({
+                success: false, message: validation.error, errorDetails: validation.details
             });
         }
 
-        // --- B. TEST CASE PREPARATION ---
-        const allTestCases = [...visibleTestCases, ...hiddenTestCases].map(tc => ({
-            input: tc.input,
-            expected: tc.output
-        }));
-
-        // --- C. REFERENCE SOLUTION VALIDATION ---
-        for (const sol of referenceSolution) {
-            const lang = sol.language;
-            const driver = driverCode.find(d => d.language === lang);
-            
-            if (!driver) {
-                return res.status(400).json({ 
-                    success: false, 
-                    message: `Driver missing for language: ${lang}. Please add it.` 
-                });
-            }
-
-            // Execute the code using your bulkJudge utility
-            const validationResults = await runCode(sol.CompleteCode, driver.Code, lang, allTestCases);
-
-            // 1. Check for Server/Internal Error (Status 13)
-            const serverError = validationResults.find(result => result.statusId === 13);
-            if (serverError) {
-                return res.status(503).json({
-                    success: false,
-                    message: "Judge server is busy. Reference solution check failed. Retry later.",
-                    type: "SERVER_BUSY"
-                });
-            }
-
-            // 2. Check for Logical Errors in Reference Solution (WA, TLE, RE, CE)
-            const failedCase = validationResults.find(result => result.statusId !== 3);
-            if (failedCase) {
-                return res.status(422).json({
-                    success: false,
-                    message: `Reference solution is incorrect for ${lang}. Fix your code before saving.`,
-                    errorDetails: {
-                        status: failedCase.status,
-                        testCase: failedCase.testCase,
-                        expected: failedCase.expected,
-                        actual: failedCase.actual,
-                        compileError: failedCase.error
-                    }
-                });
-            }
-        }
-
-        // --- D. SAVE TO DATABASE ---
         await Problem.create({
-            ...req.body,
-            status: status || 'draft',
-            visibility: visibility || 'public',
-            author: req.result._id, // Save the Creator's ID
-            problemCreator: req.result._id // Keep backward compatibility if you used this field before
+            ...req.body, status: status || 'draft', visibility: visibility || 'public',
+            author: req.result._id, problemCreator: req.result._id 
         });
 
         return res.status(201).send("Problem Created Successfully");
-
     } catch (err) {
-        // --- E. GLOBAL ERROR HANDLING ---
         console.error("Critical Error:", err);
-
-        // 1. Mongoose Duplicate Key (Title already exists)
-        if (err.code === 11000) {
-            return res.status(400).json({
-                success: false,
-                message: "Title already exists"
-            });
-        }
-
-        // 2. Mongoose Validation Error (Schema fields mismatch)
-        if (err.name === 'ValidationError') {
-            const messages = Object.values(err.errors).map(val => val.message);
-            return res.status(400).json({
-                success: false,
-                message: "Invalid Data",
-                errors: messages
-            });
-        }
-
-        // 3. Cast Error (Invalid ObjectId)
-        if (err.name === 'CastError') {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid ID format provided."
-            });
-        }
-
-        // 4. Default 500 Error
-        return res.status(500).json({
-            success: false,
-            message: "Internal Server Error.",
-            error: err.message
-        });
+        if (err.code === 11000) return res.status(400).json({ success: false, message: "Title already exists" });
+        if (err.name === 'ValidationError') return res.status(400).json({ success: false, message: "Invalid Data" });
+        return res.status(500).json({ success: false, message: "Internal Server Error." });
     }
 };
 
-const updateProblem = async(req , res)=>{
-
-    const {id} = req.params;
-    const {
-        title,
-        description,
-        difficulty,
-        tags,
-        visibleTestCases,
-        hiddenTestCases,
-        startCode,
-        referenceSolution,
-        driverCode
-    } = req.body;
+const updateProblem = async(req, res) => {
+    const { id } = req.params;
+    const { title, description, visibleTestCases, hiddenTestCases, referenceSolution, driverCode } = req.body;
 
     try {
-        // --- A. MANUAL VALIDATION (Important before hitting API) ---
-
-        if(!id)
-            return res.status(400).send("Missing Id Field");
+        if (!id) return res.status(400).send("Missing Id Field");
 
         const dsaProblem = await Problem.findById(id);
-        if(!dsaProblem)
-            return res.status(404).send("Id is invalid");
+        if (!dsaProblem) return res.status(404).send("Id is invalid");
 
         if (!title || !description || !referenceSolution || !driverCode) {
-            return res.status(400).json({
-                success: false,
-                message: "Incomplete Data"
+            return res.status(400).json({ success: false, message: "Incomplete Data" });
+        }
+
+        const allTestCases = [...visibleTestCases, ...hiddenTestCases].map(tc => ({ input: tc.input, expected: tc.output }));
+
+        // Use the exact same helper function here! No more copy-pasting!
+        const validation = await validateReferenceSolutions(referenceSolution, driverCode, allTestCases);
+        if (!validation.success) {
+            return res.status(validation.isServerBusy ? 503 : 422).json({
+                success: false, message: validation.error, errorDetails: validation.details
             });
         }
 
-        // --- B. TEST CASE PREPARATION ---
-        const allTestCases = [...visibleTestCases, ...hiddenTestCases].map(tc => ({
-            input: tc.input,
-            expected: tc.output
-        }));
+        await Problem.findByIdAndUpdate(id, { ...req.body }, { runValidators: true, new: true });
 
-        // --- C. REFERENCE SOLUTION VALIDATION ---
-        for (const sol of referenceSolution) {
-            const lang = sol.language;
-            const driver = driverCode.find(d => d.language === lang);
-            
-            if (!driver) {
-                return res.status(400).json({ 
-                    success: false, 
-                    message: `Driver missing for language: ${lang}. Please add it.` 
-                });
-            }
-
-            // Execute the code using your bulkJudge utility
-            const validationResults = await runCode(sol.CompleteCode, driver.Code, lang, allTestCases);
-
-            // 1. Check for Server/Internal Error (Status 13)
-            const serverError = validationResults.find(result => result.statusId === 13);
-            if (serverError) {
-                return res.status(503).json({
-                    success: false,
-                    message: "Judge server is busy. Reference solution check failed. Retry later.",
-                    type: "SERVER_BUSY"
-                });
-            }
-
-            // 2. Check for Logical Errors in Reference Solution (WA, TLE, RE, CE)
-            const failedCase = validationResults.find(result => result.statusId !== 3);
-            if (failedCase) {
-                return res.status(422).json({
-                    success: false,
-                    message: `Reference solution is incorrect for ${lang}. Fix your code before saving.`,
-                    errorDetails: {
-                        status: failedCase.status,
-                        testCase: failedCase.testCase,
-                        expected: failedCase.expected,
-                        actual: failedCase.actual,
-                        compileError: failedCase.error
-                    }
-                });
-            }
-        }
-
-        const newProblem = await Problem.findByIdAndUpdate(id , {...req.body} , {runValidators : true , new : true});
-        res.status(200).send(newProblem + "Updated Successfully");
+        res.status(200).send("Problem Updated Successfully"); 
     }
-    catch(err)
-    {
+    catch(err) {
         console.error("Critical Error:", err);
-
-        // 2. Mongoose Validation Error (Schema fields mismatch)
-        if (err.name === 'ValidationError') {
-            const messages = Object.values(err.errors).map(val => val.message);
-            return res.status(400).json({
-                success: false,
-                message: "Invalid Data",
-                errors: messages
-            });
-        }
-
-        // 3. Cast Error (Invalid ObjectId)
-        if (err.name === 'CastError') {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid ID format provided."
-            });
-        }
-
-        // 4. Default 500 Error
-        return res.status(500).json({
-            success: false,
-            message: "Internal Server Error.",
-            error: err.message
-        });
+        if (err.name === 'ValidationError') return res.status(400).json({ success: false, message: "Invalid Data" });
+        return res.status(500).json({ success: false, message: "Internal Server Error." });
     }
-}
+};
+
 
 const deleteProblem = async(req , res)=>{
 

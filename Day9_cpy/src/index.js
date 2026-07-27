@@ -1,7 +1,7 @@
 const express = require('express');
 const app = express();
-const http = require('http'); // 1. Import HTTP
-const { Server } = require("socket.io"); // 2. Import Socket.io
+const http = require('http');
+const { Server } = require("socket.io");
 const cors = require('cors');
 require('dotenv').config();
 const main = require('./config/db');
@@ -19,13 +19,10 @@ const contestRouter = require('./routes/contest');
 const aiRouter = require('./routes/ai');
 const masteryRouter = require('./routes/mastery');
 
-// 3. Create Server Instance
 const server = http.createServer(app);
 
-// 4. Initialize Socket.io
 const io = new Server(server, {
     cors: {
-        // ALLOW BOTH LOCAL AND PRODUCTION
         origin: [
             "http://localhost:3000",
             "https://zero-th.vercel.app"
@@ -36,23 +33,22 @@ const io = new Server(server, {
 });
 
 const allowedOrigins = [
-  "http://localhost:3000", // Local development
-  "https://zero-th.vercel.app/" // <--- We will update this later after Vercel deploy
+  "http://localhost:3000", 
+  "https://zero-th.vercel.app" 
 ];
 
 app.use(cors({
     origin: (origin, callback) => {
-
-        // Allow requests with no origin (like mobile apps or curl requests)
         if (!origin) return callback(null, true);
 
-        if (allowedOrigins.indexOf(origin) !== -1 || true) { 
+        // MAANG FIX: Removed the dangerous "|| true" backdoor!
+        if (allowedOrigins.indexOf(origin) !== -1) { 
             callback(null, true);
         } else {
             callback(new Error('Not allowed by CORS'));
         }
     },
-    credentials: true // Essential for Cookies
+    credentials: true 
 }));
 
 app.use(express.json());
@@ -61,7 +57,7 @@ app.use(cookieParser());
 app.use("/user", authRouter);
 app.use("/problem", problemRouter);
 app.use("/submission", submitRouter);
-app.use("/discussion", discussionRouter); // Mount discussion routes
+app.use("/discussion", discussionRouter); 
 app.use("/forum", forumRouter);
 app.use("/interview", interviewRouter);
 app.use("/admin-api", adminRouter);
@@ -72,13 +68,9 @@ app.use("/mastery", masteryRouter);
 io.on('connection', (socket) => {
     console.log('User Connected:', socket.id);
     
-    socket.on('stdin_change', (data) => {
-        socket.to(data.roomId).emit('stdin_update', data.stdin);
-    });
     // --- DISCUSSION ROOM LOGIC ---
     socket.on('join_room', (problemId) => {
         socket.join(problemId);
-        console.log(`User joined discussion: ${problemId}`);
     });
 
     socket.on('send_message', async (data) => {
@@ -100,36 +92,26 @@ io.on('connection', (socket) => {
         const room = io.sockets.adapter.rooms.get(roomId);
         const size = room ? room.size : 0;
         
+        // MAANG FIX: Strict block for 3rd person to prevent WebRTC crashes
         if (size >= 2) {
-             // Only block if this specific user isn't already in the room (reconnect)
-             // For simplicity in MVP: Block 3rd connection
-             socket.emit('room_full');
+             socket.emit('room_full'); 
+             socket.disconnect(); // Force disconnect the 3rd user so they can't send WebRTC signals
              return;
         }
 
         socket.join(roomId);
         
-        // 1. Verify Host against Redis
         const ownerId = await redisClient.get(`interview_room:${roomId}`);
         const isHost = (ownerId === userId);
         
-        // 2. Tell the user their role
         socket.emit('role_assigned', { isHost });
-
-        // 3. Notify others
         socket.to(roomId).emit('user_joined', socket.id);
-        // console.log(`User ${userId} joined interview ${roomId}. Host? ${isHost}`);
     });
 
-    // Secure Layout Switch (Only Host can trigger)
     socket.on('layout_change', async (data) => {
         const ownerId = await redisClient.get(`interview_room:${data.roomId}`);
-        
         if (ownerId === data.userId) {
-            // Authorized
             io.to(data.roomId).emit('layout_update', data.mode);
-        } else {
-            console.log(`Unauthorized layout change attempt by ${data.userId}`);
         }
     });
 
@@ -138,41 +120,34 @@ io.on('connection', (socket) => {
     socket.on('answer', (data) => socket.to(data.roomId).emit('answer', data.payload));
     socket.on('ice_candidate', (data) => socket.to(data.roomId).emit('ice_candidate', data.payload));
 
+    // MAANG FIX: Removed the duplicate stdin_change event!
     socket.on('stdin_change', (data) => {
         socket.to(data.roomId).emit('stdin_update', data.stdin);
     });
     
-    // Live Code Sync
     socket.on('code_change', (data) => socket.to(data.roomId).emit('code_update', data.code));
-
-    socket.on('disconnecting', () => {
-        const rooms = Array.from(socket.rooms);
-        // Notify all rooms this user was in
-        rooms.forEach(roomId => {
-            socket.to(roomId).emit('user_disconnected', socket.id);
-        });
-        console.log(`User ${socket.id} disconnecting from rooms:`, rooms);
-    });
-
-    socket.on('disconnect', () => {
-        console.log('User Disconnected', socket.id);
-    });
 
     socket.on('language_change', (data) => {
         socket.to(data.roomId).emit('language_update', data.language);
     });
 
-    // 6. Sync Console Output
     socket.on('output_sync', (data) => {
         socket.to(data.roomId).emit('output_update', data.output);
+    });
+
+    socket.on('disconnecting', () => {
+        const rooms = Array.from(socket.rooms);
+        rooms.forEach(roomId => socket.to(roomId).emit('user_disconnected', socket.id));
+    });
+
+    socket.on('disconnect', () => {
+        console.log('User Disconnected', socket.id);
     });
 });
 
 const InitializeConnection = async () => {
     try {
-        
         await Promise.all([main(), redisClient.connect()]);
-        
         console.log("DB & Redis Connected");
 
         const PORT = process.env.PORT || 5000;

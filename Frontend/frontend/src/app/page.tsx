@@ -223,7 +223,7 @@ export default function Home() {
                     <br />
                     <div className="text-blue-400">int <span className="text-yellow-400">main</span><span className="text-neutral-300">() {"{"}</span></div>
                     <div className="pl-4 text-neutral-400">// Initialize system core</div>
-                    <div className="pl-4 text-neutral-200">System.init<span className="text-neutral-500">(</span><span className="text-emerald-400">"ZEROTH"</span><span className="text-neutral-500">);</span></div>
+                    <div className="pl-4 text-neutral-200">System.init<span className="text-neutral-500">(</span><span className="text-emerald-400">&quot;ZEROTH&quot;</span><span className="text-neutral-500">);</span></div>
                     <br/>
                     <div className="pl-4 text-purple-400">return <span className="text-orange-400">0</span>;</div>
                     <div className="text-neutral-300">{"}"}</div>

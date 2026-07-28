@@ -30,9 +30,6 @@ export default function ProblemPage() {
       enabled: !!user // Only fetch if user exists
   });
 
-  useEffect(() => {
-      setPage(1);
-  }, [debouncedSearch, difficulty, category]);
 
   // 5. AUTHENTICATION GUARD
   // If auth is done loading, and there is no user, show "Access Denied" or Redirect
@@ -101,15 +98,15 @@ export default function ProblemPage() {
             <div className="flex flex-col md:flex-row gap-4">
                 <div className="relative group flex-1">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Search className="h-4 w-4 text-neutral-500"/></div>
-                    <input type="text" className="block w-full pl-10 pr-3 py-2.5 border border-white/10 rounded-lg bg-[#0A0A0A] text-neutral-200 focus:border-accent outline-none transition-all" placeholder="Search algorithms..." value={search} onChange={(e) => setSearch(e.target.value)} />
+                    <input type="text" className="block w-full pl-10 pr-3 py-2.5 border border-white/10 rounded-lg bg-[#0A0A0A] text-neutral-200 focus:border-accent outline-none transition-all" placeholder="Search algorithms..." value={search} onChange={(e) => {setSearch(e.target.value); setPage(1);}} />
                 </div>
-                <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)} className="px-4 py-2.5 bg-[#0A0A0A] border border-white/10 rounded-lg text-sm text-neutral-300 focus:border-accent outline-none cursor-pointer">
+                <select value={difficulty} onChange={(e) => {setDifficulty(e.target.value); setPage(1);}} className="px-4 py-2.5 bg-[#0A0A0A] border border-white/10 rounded-lg text-sm text-neutral-300 focus:border-accent outline-none cursor-pointer">
                     <option value="all" className="bg-[#111]">All Difficulties</option>
                     <option value="easy" className="bg-[#111]">Easy</option>
                     <option value="medium" className="bg-[#111]">Medium</option>
                     <option value="hard" className="bg-[#111]">Hard</option>
                 </select>
-                <select value={category} onChange={(e) => setCategory(e.target.value)} className="px-4 py-2.5 bg-[#0A0A0A] border border-white/10 rounded-lg text-sm text-neutral-300 focus:border-accent outline-none cursor-pointer">
+                <select value={category} onChange={(e) => {setCategory(e.target.value); setPage(1);}} className="px-4 py-2.5 bg-[#0A0A0A] border border-white/10 rounded-lg text-sm text-neutral-300 focus:border-accent outline-none cursor-pointer">
                     <option value="all" className="bg-[#111]">All Topics</option>
                     <option value="Array" className="bg-[#111]">Array</option>
                     <option value="DP" className="bg-[#111]">Dynamic Programming</option>

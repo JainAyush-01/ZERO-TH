@@ -34,11 +34,13 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginForm) => {
     try {
         await api.post("/user/login", data);
-        await queryClient.invalidateQueries({ queryKey: ["auth-user"] });
+        
+        // This forces the code to wait until the user data is 100% downloaded.
+        await queryClient.refetchQueries({ queryKey: ["auth-user"] });
         
         toast.success("Access Granted.");
+        router.refresh();
         router.push("/problems"); 
-        // window.location.href = "/problems";
 
     } catch (err: any) {
         const msg = err.response?.data?.message || err.response?.data || "Invalid Credentials";
@@ -52,9 +54,12 @@ export default function LoginPage() {
           await api.post('/user/google', { 
               idToken: credentialResponse.credential 
           });
-          await queryClient.invalidateQueries({ queryKey: ["auth-user"] });
+          
+          await queryClient.refetchQueries({ queryKey: ["auth-user"] });
           
           toast.success("Identity Verified via Google");
+          
+          router.refresh();
           router.push("/problems");
       } catch (err: any) {
           const msg = err.response?.data?.message || "Google Login Failed";

@@ -74,7 +74,6 @@ export default function ContestWorkspace() {
   const handleSubmit = async () => {
     setStatus("submitting");
     try {
-      // 🚀 CRITICAL CHANGE: Submit to CONTEST Endpoint
       const { data } = await api.post(`/contest/submit`, { 
           contestId,
           problemId,

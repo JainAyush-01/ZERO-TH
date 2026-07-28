@@ -13,7 +13,6 @@ import { Loader2, Mail, Lock, User, KeyRound, Eye, EyeOff } from "lucide-react";
 import { GoogleLogin } from '@react-oauth/google';
 import { useQueryClient } from "@tanstack/react-query";
 
-// 1. Validation Schema
 const registerSchema = z.object({
   firstName: z.string().min(2, "Name too short"),
   emailId: z.string().email("Invalid email"),
@@ -25,30 +24,27 @@ type RegisterForm = z.infer<typeof registerSchema>;
 
 export default function RegisterPage() {
   const router = useRouter();
-  const queryClient = useQueryClient(); // Init Client
+  const queryClient = useQueryClient(); 
   const [otpSent, setOtpSent] = useState(false);
   const [otpLoading, setOtpLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  const { register, handleSubmit, getValues, formState: { errors, isSubmitting } } = useForm<RegisterForm>({
+  const { register, handleSubmit, getValues, trigger, formState: { errors, isSubmitting } } = useForm<RegisterForm>({
     resolver: zodResolver(registerSchema),
   });
 
-  // 2. Action: Send OTP
   const handleSendOtp = async () => {
-    const email = getValues("emailId");
-    // Manual validation for email before sending OTP
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        return toast.error("Please enter a valid email first");
-    }
 
+    const isEmailValid = await trigger("emailId");
+    if (!isEmailValid) return; 
+
+    const email = getValues("emailId");
     setOtpLoading(true);
     try {
-        await api.post("/user/send-otp", { emailId: email });
+        await api.post("/user/send-otp", { emailId: email, type: 'register' }); // Added type parameter based on your backend
         setOtpSent(true);
         toast.success(`OTP sent to ${email}`);
     } catch (err: any) {
-        // FIX: Safely extract error message string
         const msg = err.response?.data?.message || err.response?.data || "Failed to send OTP";
         toast.error(typeof msg === 'string' ? msg : "System Error");
     } finally {
@@ -59,23 +55,23 @@ export default function RegisterPage() {
   const handleGoogleSuccess = async (credentialResponse: any) => {
       try {
           await api.post('/user/google', { idToken: credentialResponse.credential });
-          await queryClient.invalidateQueries({ queryKey: ["auth-user"] });
+          
+          await queryClient.refetchQueries({ queryKey: ["auth-user"] });
           toast.success("Account Created via Google");
+          
+          router.refresh();
           router.push("/problems");
       } catch (err: any) {
           toast.error("Google Registration Failed");
       }
   };
 
-  // 3. Action: Final Registration
   const onSubmit = async (data: RegisterForm) => {
     try {
-        // Sends: firstName, emailId, password, otp
         await api.post("/user/register", data);
         toast.success("Account initialized successfully.");
         router.push("/login");
     } catch (err: any) {
-        // FIX: Safely extract error message string
         const msg = err.response?.data?.message || err.response?.data || "Registration failed";
         toast.error(typeof msg === 'string' ? msg : "System Error");
     }

@@ -4,60 +4,75 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import api from "@/lib/api";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { Loader2, Mail, Lock, KeyRound, ArrowLeft } from "lucide-react";
 
-// Unified Schema (Handles both steps)
-const forgotPasswordSchema = z.object({
-  emailId: z.string().email("Invalid email"),
-  // OTP and NewPassword are optional initially, but we validate them manually in Step 2
-  otp: z.string().optional(),
-  newPassword: z.string().optional(),
+// 1. Strict Schemas for validation
+const step1Schema = z.object({
+  emailId: z.string().email("Invalid email format"),
 });
 
-type ForgotPasswordForm = z.infer<typeof forgotPasswordSchema>;
+const step2Schema = z.object({
+  emailId: z.string().email(), 
+  otp: z.string().length(6, "Must be exactly 6 digits"),
+  newPassword: z.string().min(8, "Password must be 8+ characters"),
+});
+
+// 2. MAANG FIX: Explicit TypeScript type encompassing ALL possible fields
+type ForgotPasswordForm = {
+  emailId: string;
+  otp?: string;
+  newPassword?: string;
+};
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
-  const [step, setStep] = useState<1 | 2>(1);
-  const [email, setEmail] = useState("");
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // Read state from the URL so it survives mobile browser refreshes!
+  const currentStep = (parseInt(searchParams.get("step") || "1")) === 2 ? 2 : 1;
+  const savedEmail = searchParams.get("email") || "";
+
   const [loading, setLoading] = useState(false);
 
-  const { register, handleSubmit, formState: { errors }, setError } = useForm<ForgotPasswordForm>({
-    resolver: zodResolver(forgotPasswordSchema),
+  const currentSchema = currentStep === 1 ? step1Schema : step2Schema;
+
+  // 3. Pass the Type to useForm so TypeScript knows about 'otp' and 'newPassword'
+  const { register, handleSubmit, formState: { errors } } = useForm<ForgotPasswordForm>({
+    resolver: zodResolver(currentSchema),
+    defaultValues: {
+      emailId: savedEmail 
+    }
   });
 
   const onSubmit = async (data: ForgotPasswordForm) => {
     setLoading(true);
     try {
-      if (step === 1) {
+      if (currentStep === 1) {
         // Step 1: Send OTP
         await api.post("/user/forgot-password", { emailId: data.emailId });
-        setEmail(data.emailId);
-        setStep(2);
+        
         toast.success("OTP sent to your email");
+        
+        // MAANG FIX: Push state to the URL instead of volatile RAM
+        const params = new URLSearchParams(searchParams);
+        params.set("step", "2");
+        params.set("email", data.emailId);
+        router.push(`${pathname}?${params.toString()}`);
+        
       } else {
-        // Step 2: Reset Password
-        if (!data.otp || data.otp.length < 6) {
-             setError("otp", { message: "Enter valid 6-digit OTP" });
-             setLoading(false);
-             return;
-        }
-        if (!data.newPassword || data.newPassword.length < 6) {
-             setError("newPassword", { message: "Password must be 6+ chars" });
-             setLoading(false);
-             return;
-        }
-
+        // Step 2: Reset Password (Zod guarantees otp and newPassword exist here)
         await api.post("/user/reset-password", { 
-            emailId: email,
+            emailId: savedEmail,
             otp: data.otp,
             newPassword: data.newPassword
         });
+        
         toast.success("Password reset successfully. Please login.");
         router.push("/login");
       }
@@ -81,13 +96,13 @@ export default function ForgotPasswordPage() {
         <div className="text-center mb-8">
             <h1 className="text-2xl font-bold text-white mb-2">Account Recovery</h1>
             <p className="text-neutral-400 text-sm">
-                {step === 1 ? "Enter your email to receive a recovery code." : "Set a new security key."}
+                {currentStep === 1 ? "Enter your email to receive a recovery code." : "Set a new security key."}
             </p>
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           
-          {step === 1 && (
+          {currentStep === 1 && (
               <div className="space-y-1">
                 <label className="text-[10px] font-mono text-neutral-500 uppercase flex items-center gap-2">
                     <Mail size={12} /> Email Protocol
@@ -97,11 +112,11 @@ export default function ForgotPasswordPage() {
                   className="w-full bg-[#111] border border-white/10 rounded-lg px-4 py-3 text-white focus:border-accent focus:outline-none transition-all placeholder-neutral-700"
                   placeholder="user@zeroth.io"
                 />
-                {errors.emailId && <p className="text-red-400 text-xs">{errors.emailId.message}</p>}
+                {errors.emailId && <p className="text-red-400 text-xs">{errors.emailId?.message?.toString()}</p>}
               </div>
           )}
 
-          {step === 2 && (
+          {currentStep === 2 && (
               <>
                   <div className="space-y-1">
                     <label className="text-[10px] font-mono text-neutral-500 uppercase flex items-center gap-2 text-accent">
@@ -113,7 +128,7 @@ export default function ForgotPasswordPage() {
                         placeholder="123456"
                         maxLength={6}
                     />
-                    {errors.otp && <p className="text-red-400 text-xs">{errors.otp.message}</p>}
+                    {errors.otp && <p className="text-red-400 text-xs">{errors.otp?.message?.toString()}</p>}
                   </div>
 
                   <div className="space-y-1">
@@ -126,7 +141,7 @@ export default function ForgotPasswordPage() {
                         className="w-full bg-[#111] border border-white/10 rounded-lg px-4 py-3 text-white focus:border-accent focus:outline-none transition-all placeholder-neutral-700"
                         placeholder="••••••••"
                     />
-                    {errors.newPassword && <p className="text-red-400 text-xs">{errors.newPassword.message}</p>}
+                    {errors.newPassword && <p className="text-red-400 text-xs">{errors.newPassword?.message?.toString()}</p>}
                   </div>
               </>
           )}
@@ -135,7 +150,7 @@ export default function ForgotPasswordPage() {
             disabled={loading}
             className="w-full mt-6 h-12 text-base font-bold tracking-wide"
           >
-            {loading ? <Loader2 className="animate-spin" /> : step === 1 ? "Send Recovery Code" : "Reset Password"}
+            {loading ? <Loader2 className="animate-spin" /> : currentStep === 1 ? "Send Recovery Code" : "Reset Password"}
           </Button>
         </form>
 

@@ -5,14 +5,19 @@ import { Plus, Users, FileCode, LayoutDashboard, ShieldPlus, Database, Trophy } 
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth"; // Import Auth
 
-// Component Imports
-import CreateProblemForm from "@/components/admin/CreateProblemForm"; 
-import CreateAdminForm from "@/components/admin/CreateAdminForm";
-import CreateContestForm from "@/components/admin/CreateContestForm";
+import dynamic from 'next/dynamic';
+import { Loader2 } from "lucide-react";
 import AdminStats from "@/components/admin/AdminStats"; 
-import UserManagement from "@/components/admin/UserManagement"; 
-import ProblemManagement from "@/components/admin/ProblemManagement";
-import SubmissionLogs from "@/components/admin/SubmissionLogs";
+
+// The browser will NOT download these until they are rendered!
+const CreateProblemForm = dynamic(() => import("@/components/admin/CreateProblemForm"), {
+    loading: () => <Loader2 className="animate-spin" /> // Shows this during the network delay!
+});
+const CreateAdminForm = dynamic(() => import("@/components/admin/CreateAdminForm"));
+const CreateContestForm = dynamic(() => import("@/components/admin/CreateContestForm"));
+const UserManagement = dynamic(() => import("@/components/admin/UserManagement"));
+const ProblemManagement = dynamic(() => import("@/components/admin/ProblemManagement"));
+const SubmissionLogs = dynamic(() => import("@/components/admin/SubmissionLogs"));
 
 export default function AdminDashboard() {
   const { data: user } = useAuth();

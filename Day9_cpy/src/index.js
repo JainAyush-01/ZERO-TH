@@ -40,8 +40,7 @@ const allowedOrigins = [
 app.use(cors({
     origin: (origin, callback) => {
         if (!origin) return callback(null, true);
-
-        // MAANG FIX: Removed the dangerous "|| true" backdoor!
+        
         if (allowedOrigins.indexOf(origin) !== -1) { 
             callback(null, true);
         } else {

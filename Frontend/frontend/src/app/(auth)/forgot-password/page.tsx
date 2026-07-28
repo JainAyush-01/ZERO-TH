@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, Suspense } from "react"; // <-- ADDED Suspense HERE
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -11,7 +11,6 @@ import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { Loader2, Mail, Lock, KeyRound, ArrowLeft } from "lucide-react";
 
-// 1. Strict Schemas for validation
 const step1Schema = z.object({
   emailId: z.string().email("Invalid email format"),
 });
@@ -22,19 +21,18 @@ const step2Schema = z.object({
   newPassword: z.string().min(8, "Password must be 8+ characters"),
 });
 
-// 2. MAANG FIX: Explicit TypeScript type encompassing ALL possible fields
 type ForgotPasswordForm = {
   emailId: string;
   otp?: string;
   newPassword?: string;
 };
 
-export default function ForgotPasswordPage() {
+// 1. Rename the main function to Content
+function ForgotPasswordFormContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  // Read state from the URL so it survives mobile browser refreshes!
   const currentStep = (parseInt(searchParams.get("step") || "1")) === 2 ? 2 : 1;
   const savedEmail = searchParams.get("email") || "";
 
@@ -42,7 +40,6 @@ export default function ForgotPasswordPage() {
 
   const currentSchema = currentStep === 1 ? step1Schema : step2Schema;
 
-  // 3. Pass the Type to useForm so TypeScript knows about 'otp' and 'newPassword'
   const { register, handleSubmit, formState: { errors } } = useForm<ForgotPasswordForm>({
     resolver: zodResolver(currentSchema),
     defaultValues: {
@@ -54,19 +51,15 @@ export default function ForgotPasswordPage() {
     setLoading(true);
     try {
       if (currentStep === 1) {
-        // Step 1: Send OTP
         await api.post("/user/forgot-password", { emailId: data.emailId });
-        
         toast.success("OTP sent to your email");
         
-        // MAANG FIX: Push state to the URL instead of volatile RAM
         const params = new URLSearchParams(searchParams);
         params.set("step", "2");
         params.set("email", data.emailId);
         router.push(`${pathname}?${params.toString()}`);
         
       } else {
-        // Step 2: Reset Password (Zod guarantees otp and newPassword exist here)
         await api.post("/user/reset-password", { 
             emailId: savedEmail,
             otp: data.otp,
@@ -161,5 +154,14 @@ export default function ForgotPasswordPage() {
         </div>
       </motion.div>
     </div>
+  );
+}
+
+// 2. Wrap the component in Suspense so Vercel doesn't crash during build!
+export default function ForgotPasswordPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#050505]"><Loader2 className="animate-spin text-white" /></div>}>
+      <ForgotPasswordFormContent />
+    </Suspense>
   );
 }
